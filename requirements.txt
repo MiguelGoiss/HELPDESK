@@ -1,0 +1,7 @@
+fastapi[all] 
+fastapi-mail
+tortoise-orm 
+mysql-connector-python
+aiomysql
+python-dotenv
+python-jose[cryptography]
