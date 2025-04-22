@@ -21,16 +21,14 @@ async def create_token(data: dict, token_type: str = 'access'):
   to_encode = data
   if token_type == 'access':
     expire_time = { "minutes": ACCESS_TOKEN_EXPIRE_MINUTES }
-    secret = JWT_ACCESS_SECRET 
+    secret = JWT_ACCESS_SECRET
   elif token_type == 'refresh': 
     expire_time = { "days": REFRESH_TOKEN_EXPIRE_DAYS }
     secret = JWT_REFRESH_SECRET
   else:
     expire_time = { "hours": RECOVERY_TOKEN_EXPIRE_HOURS }
     secret = JWT_RECOVERY_SECRET
-    
   expire = datetime.now() + timedelta(**expire_time)
-
   to_encode["exp"] = expire
   encoded_jwt = jwt.encode(to_encode, secret, algorithm='HS256')
   return encoded_jwt

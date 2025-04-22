@@ -26,16 +26,16 @@ async def recovery_email(request_user: dict):
     six_digit_secret = generate_6_digit_code()
     
     crypto_dict = {
-      "id": request_user.id,
-      "first_name": request_user.first_name,
-      "last_name": request_user.last_name,
+      "id": request_user['id'],
+      "first_name": request_user['first_name'],
+      "last_name": request_user['last_name'],
       "exp": (datetime.now() + timedelta(minutes=15)).timestamp(),
       "secret": six_digit_secret
     }
     
     encrypted = crypto.encrypt_dict(crypto_dict)
     
-    await add_recovery_token(request_user.id, encrypted.decode('utf-8'))
+    await add_recovery_token(request_user['id'], encrypted.decode('utf-8'))
     
     # Load HTML template
     template_path = "app/utils/templates/recovery_email.html"
@@ -48,9 +48,13 @@ async def recovery_email(request_user: dict):
       current_year=datetime.now().year
     )
     
+    for contact in request_user['contacts']:
+      if contact['main_contact'] and contact['contact_type']['id'] == 1:
+        email = contact['contact']
+    
     message = MessageSchema(
       subject="Password Recovery",
-      recipients=[request_user.email],
+      recipients=[email],
       body=html_content,
       subtype="html"
     )

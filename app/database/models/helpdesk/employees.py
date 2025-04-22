@@ -142,7 +142,7 @@ class Employees(Model):
       "contacts": contacts
     }
   
-  def hash_password(self, password: str) -> str:
+  def hash_password(password: str) -> str:
     # Generate a random salt
     salt = os.urandom(16)
     

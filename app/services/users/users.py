@@ -519,6 +519,7 @@ async def user_authentication(authentication_form: dict):
       )
     # Formata os dados do utilizador para dict
     user_info = await db_user.to_dict()
+    print(user_info)
     # Cria o access token com exp de 30 mins
     access_token = await create_token(user_info, 'access')
     # Cria o refresh token com exp de 5 dias
@@ -558,14 +559,15 @@ async def read_user_me(token: dict):
 async def fetch_email_user(email: str):
   try:
     # Obtem o utilizador através do email
-    db_user = await Employees.get(email=email)
+    print(email)
+    db_user = await Employees.get(employee_relation__contact=email, employee_relation__main_contact=True)
     if not db_user:
       raise CustomError(
         404,
         "User not found"
         "A User with the requested email could not be found"
       )
-    return db_user
+    return await db_user.to_dict_details()
 
   except Exception as e:
     raise CustomError(

@@ -6,7 +6,6 @@ from app.services.users import (
   update_user_details,
   delete_user_details,
   user_authentication,
-  read_user_me,
   fetch_email_user,
   code_verification,
   update_user_password,
@@ -18,9 +17,8 @@ from app.services.emails.emails import recovery_email
 from fastapi.responses import JSONResponse
 import json
 
-async def add_user(user: dict, token: dict):
+async def add_user(user: dict, current_user: dict):
   try:
-    current_user = await read_user_me(token)
     new_user = await create_user(user, current_user)
     return JSONResponse(new_user, 200)
   
@@ -28,13 +26,13 @@ async def add_user(user: dict, token: dict):
     raise e
 
 async def handle_fetch_users(
-  path,
-  page,
-  page_size,
-  original_query_params,
-  search,
-  and_filters,
-  order_by
+  path: str,
+  page: int,
+  page_size: int,
+  original_query_params: dict,
+  search: str,
+  and_filters: str,
+  order_by: str
 ):
   try:
     parsed_and_filters = {}
@@ -61,22 +59,20 @@ async def handle_fetch_users(
   except Exception as e:
     raise e
 
-async def fetch_user_details(id: int, current_user: dict = Depends(require_permission('Tickets'))):
+async def fetch_user_details(id: int):
   try:
     return await get_user_details(id)
   except Exception as e:
     raise e
 
-async def update_user(id: int, user_data: dict, token: dict):
+async def update_user(id: int, user_data: dict, current_user: dict):
   try:
-    current_user = await read_user_me(token)
     return await update_user_details(id, user_data, current_user)
   except Exception as e:
     raise e
 
-async def delete_user(id: int, token: dict):
+async def delete_user(id: int, current_user: dict):
   try:
-    current_user = await read_user_me(token)
     return await delete_user_details(id, current_user)
   except Exception as e:
     raise e
@@ -87,17 +83,11 @@ async def handle_user_authentication(authentication_form: dict):
   except Exception as e:
     raise e
 
-async def handle_read_user_me(token: dict):
-  try:
-    return await read_user_me(token)
-  except Exception as e:
-    raise e
-
 async def handle_request_email_recovery(email: dict):
   try:
     db_user = await fetch_email_user(email.email)
     await recovery_email(db_user)
-    return db_user.to_dict()
+    return db_user
 
   except Exception as e:
     raise e
@@ -125,7 +115,6 @@ async def handle_get_employees_with_permission(permission_id: int):
 
 async def handle_access_token_creation(user_info: dict):
   try:
-    print(user_info)
     new_access_token = await create_token(user_info)
     return JSONResponse({"access_token": new_access_token}, 200)
   except Exception as e:

@@ -1,3 +1,4 @@
+# Modelos de Colaboradores
 from .employees import Employees
 from .companies import Companies
 from .employees_companies import EmployeesCompanies
@@ -8,6 +9,22 @@ from .employee_contacts import EmployeeContacts
 from .employee_contact_types import EmployeeContactTypes
 from .employee_employee_permissions import Employee_EmployeePermissions
 from .employee_permissions import EmployeePermissions
+
+# Modelos de Tickets
+from .tickets import Tickets
+from .ticket_types import TicketTypes
+from .ticket_suppliers import TicketSuppliers
+from .ticket_subcategories import TicketSubcategories
+from .ticket_statuses import TicketStatuses
+from .ticket_priorities import TicketPriorities
+from .ticket_logs import TicketLogs
+from .ticket_equipments import TicketEquipments
+from .ticket_categories import TicketCategories
+from .ticket_categories_companies import TicketCategories_Companies
+from .ticket_attachments import TicketAttachments
+from .ticket_assistance_types import TicketAssistanceTypes
+
+
 
 __all__ = [
   "Employees",
@@ -20,4 +37,16 @@ __all__ = [
   "EmployeeContactTypes",
   "Employee_EmployeePermissions",
   "EmployeePermissions",
-] 
+  "Tickets",
+  "TicketTypes",
+  "TicketSuppliers",
+  "TicketSubcategories",
+  "TicketStatuses",
+  "TicketPriorities",
+  "TicketLogs",
+  "TicketEquipments",
+  "TicketCategories",
+  "TicketCategories_Companies",
+  "TicketAttachments",
+  "TicketAssistanceTypes",
+]

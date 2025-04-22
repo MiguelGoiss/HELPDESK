@@ -4,8 +4,8 @@ from tortoise import fields
 class EmployeeLogs(Model):
   id = fields.IntField(pk=True)
   action_type = fields.CharField(max_length=50)
-  employee = fields.ForeignKeyField("helpdesk_models.Employees", related_name="employee_id")
-  target = fields.ForeignKeyField("helpdesk_models.Employees", related_name="target_id", null=True)
+  agent = fields.ForeignKeyField("helpdesk_models.Employees", related_name="agent_log", db_column="agent_id") 
+  target = fields.ForeignKeyField("helpdesk_models.Employees", related_name="employee_log", db_column="target_id", null=True)
   old_values = fields.JSONField(null=True)
   new_values = fields.JSONField(null=True)
   details = fields.TextField(null=True)

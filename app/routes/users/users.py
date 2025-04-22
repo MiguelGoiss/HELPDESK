@@ -6,7 +6,6 @@ from app.controllers.users import (
   fetch_user_details,
   update_user,
   delete_user,
-  handle_read_user_me,
   handle_user_authentication,
   handle_request_email_recovery,
   handle_code_verification,
@@ -62,9 +61,9 @@ async def update_user_details(id:int, user_data: UserUpdate, current_user: dict 
 async def delete_user_details(id: int, current_user: dict = Depends(validate_access_token)):
   return await delete_user(id, current_user)
 
-@router.get("/me", dependencies=[Depends(require_permission("tickets"))])
+@router.get("/me")#, dependencies=[Depends(require_permission("tickets"))])
 async def read_user_me(current_user: dict = Depends(validate_access_token)):
-  return await handle_read_user_me(current_user)
+  return current_user
 
 @router.post("/authenticate")
 async def authenticate_user(authentication_form: UserAuthentication):
