@@ -11,5 +11,7 @@ from .users import (
   update_user_password,
   add_recovery_token,
   get_employees_with_permission,
+  get_users_by_ids,
+  get_employee_basic_info,
 )
 from .auth import create_token, validate_access_token, require_permission

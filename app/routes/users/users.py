@@ -1,5 +1,4 @@
 from fastapi import APIRouter, Request, Query, Depends
-from fastapi.security import HTTPBearer
 from app.controllers.users import (
   add_user,
   handle_fetch_users,
@@ -14,7 +13,6 @@ from app.controllers.users import (
   handle_access_token_creation,
 )
 from app.schemas.users import UserCreate, UserResponse, UserUpdate, UserAuthentication, EmailForm, CodeForm, RecoveryForm
-from typing import Optional
 from app.utils.helpers.token import validate_access_token, validate_refresh_token
 from app.services.users import require_permission 
 

@@ -20,9 +20,13 @@ JWT_ACCESS_SECRET = os.getenv('JWT_ACCESS_SECRET')
 JWT_REFRESH_SECRET = os.getenv('JWT_REFRESH_SECRET')
 
 async def validate_access_token(
-  request: Request, # Inject Request to potentially store user state
+  request: Request,
   token: HTTPAuthorizationCredentials = Depends(bearer_scheme)
-) -> dict:
+) -> (dict | None):
+  
+  if not token:
+    return None
+  
   try:
     # Decode the JWT
     payload = jwt.decode(
@@ -87,8 +91,28 @@ async def validate_access_token(
       401,
       "Could not validate credentials"
     ) from e
+  
   except HTTPException as e:
     raise e
+  
+  except Exception as e:
+    raise HTTPException(
+      status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+      detail="An internal error occurred during authentication.",
+    ) from e
+
+async def validate_optional_access_token(
+  request: Request
+) -> (dict | None):
+  try:
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+      return None
+    
+    token = auth_header.split(" ")[1]
+    user = await validate_access_token(request, f"Bearer {token}") # Pass the full header for consistency? Or just token?
+    return user
+
   except Exception as e:
     raise HTTPException(
       status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

@@ -5,7 +5,7 @@ class LogService:
   async def log_action(
     # request: Request,
     action_type: str,
-    employee_id: int,
+    agent_it: int,
     model: Model,
     target_id: int | None = None,
     old_values: dict[str, any] | None = None,
@@ -17,11 +17,9 @@ class LogService:
     
     await model.create(
       action_type=action_type,
-      employee_id=employee_id,
+      agent_id=agent_it,
       target_id=target_id,
       old_values=old_values,
       new_values=new_values,
-      details=details,
-      # ip_address=ip_address,
-      # user_agent=user_agent
+      details=details
     )

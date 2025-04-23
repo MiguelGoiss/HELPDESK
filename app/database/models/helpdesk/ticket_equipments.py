@@ -9,7 +9,12 @@ class TicketEquipments(Model):
     on_delete="CASCADE",
     db_column="ticket_id"
   )
-  equipments = fields.JSONField()
+  # equipment = fields.ForeignKeyField(
+  #   "equipments_models.Equipments",
+  #   related_name="ticket_equipments",
+  #   on_delete="CASCADE",
+  #   db_column="equipment_id"
+  # )
   
   class Meta:
     table = "ticket_equipments"

@@ -151,14 +151,13 @@ ALLOWED_ORDER_FIELDS: set[str] = {
   'created_at', 'updated_at', 'last_time_seen',
   'department__name', 'company__name', 'local__name',
 }
-# --- Fim de Configuração ---
+# --- Fim da Configuração ---
 
 async def get_users(
   path: str,
   page: int,
   page_size: int,
   original_query_params: dict[str, any] | None = None,
-  # --- New/Modified Parameters ---
   # O parametro search serve para pesquisa (OR)
   search: str | None = None,
   # Dict para pesquisa especifica (AND)
@@ -703,3 +702,38 @@ async def get_employees_with_permission(permission_id: int):
       f"Ocorreu um erro ao obter os colaboradores com a permissão {permission_id}",
       str(e)
     )
+    
+async def get_users_by_ids(ids: list[int]):
+  try:
+    # Obtem objetos dos ids pedidos.
+    db_employees = Employees.filter(id__in=ids, deactivated_at__isnull=True, deleted_at__isnull=True)
+    return await db_employees.all()
+  
+  except DoesNotExist as e:
+    raise CustomError(
+      404,
+      "Colaboradores não encontrados",
+      str(e)
+    )
+  
+  except Exception as e:
+    raise e
+
+async def get_employee_basic_info(id: int) -> dict:
+  try:
+    # Obtem as informações básicas de um utilizador com o email
+    db_employee = await Employees.filter(id=id, deactivated_at__isnull=True, deleted_at__isnull=True).first()
+    if not db_employee:
+      return None
+    return await db_employee.to_dict_employee_emails()
+    
+  except CustomError as e:
+    raise e
+  
+  except Exception as e:
+    raise CustomError(
+      500,
+      "Ocorreu um erro ao obter as informações do colaborador",
+      str(e)
+    )
+    

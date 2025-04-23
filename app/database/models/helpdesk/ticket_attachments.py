@@ -9,12 +9,12 @@ class TicketAttachments(Model):
   created_at = fields.DatetimeField(auto_now_add=True)
   ticket = fields.ForeignKeyField(
     "helpdesk_models.Tickets",
-    related_name="ticket_attachments",
+    related_name="attachments",
     db_column="ticket_id"
   )
   agent = fields.ForeignKeyField(
     "helpdesk_models.Employees",
-    related_name="agent_attachments",
+    related_name="uploaded_attachments",
     db_column="agent_id"
   )
   

@@ -1,5 +1,6 @@
 from tortoise.models import Model
 from tortoise import fields
+from tortoise.exceptions import DoesNotExist
 from datetime import datetime
 import hashlib
 import os
@@ -49,6 +50,21 @@ class Employees(Model):
   
   class Meta:
     table = "employees"
+  
+  async def to_dict_employee_emails(self) -> dict:
+    try:
+      employee_email = await self.employee_relation.filter(main_contact=True, contact_type_id=1).first()
+      email = employee_email._contact() if employee_email else None
+    except Exception:
+      email = None
+    
+    return {
+      "id": self.id,
+      "first_name": self.first_name,
+      "last_name": self.last_name,
+      "full_name": self.full_name,
+      "email": email,
+    }
   
   async def to_dict_contacts(self) -> dict:
     department = await self.department

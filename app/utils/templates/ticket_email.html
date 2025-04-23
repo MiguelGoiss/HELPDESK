@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Seu Ticket de Suporte Foi Criado</title>
+    <style type="text/css">
+        /* Reset CSS básico para compatibilidade */
+        body { margin: 0; padding: 0; }
+        table { border-collapse: collapse; }
+        td { padding: 0; }
+        img { border: 0; line-height: 100%; outline: none; text-decoration: none; }
+
+        /* Estilos principais */
+        .container {
+            width: 100%;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        .header {
+            background-color: #f2f2f2; /* Cor de fundo leve para o cabeçalho */
+            padding: 20px;
+            text-align: center;
+        }
+        .content {
+            padding: 20px;
+            background-color: #ffffff; /* Fundo branco para o conteúdo */
+        }
+        .footer {
+            background-color: #f2f2f2; /* Cor de fundo leve para o rodapé */
+            padding: 20px;
+            text-align: center;
+            font-size: 12px;
+            color: #555555;
+        }
+        h1 {
+            color: #333333;
+            font-size: 24px;
+            margin-top: 0;
+        }
+        p {
+            color: #555555;
+            font-size: 16px;
+            line-height: 1.6;
+            margin-bottom: 15px;
+        }
+        .ticket-details {
+            background-color: #eeeeee; /* Fundo para destacar os detalhes do ticket */
+            padding: 15px;
+            margin-bottom: 15px;
+            border-radius: 5px;
+        }
+        .ticket-details p {
+            margin: 5px 0;
+            font-size: 15px;
+        }
+        a {
+            color: #1a73e8; /* Cor típica de link do Google */
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f4f4f4;">
+    <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse;">
+        <tr>
+            <td align="center" style="padding: 20px 0;">
+                <table border="0" cellpadding="0" cellspacing="0" width="600" class="container" style="border-collapse: collapse; background-color: #ffffff; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    <tr>
+                        <td align="center" class="header">
+                            <h1>{{email_dict['title']}}</h1>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td align="left" class="content">
+                            <p>Olá, {{requester_info['first_name']}} {{requester_info['last_name']}},</p>
+                            <p>Confirmamos que o seu ticket de suporte foi criado com sucesso. Agradecemos o seu contacto!</p>
+
+                            <div class="ticket-details">
+                                <p><strong>Número do Ticket:</strong> {{ticket_details['id']}}</p>
+                                <p><strong>Assunto:</strong> {{ticket_details['request']}}</p>
+                            </div>
+
+                            <p>A nossa equipa de suporte irá rever o seu pedido e entrará em contacto consigo o mais rapidamente possível.</p>
+
+                            <p>Pode acompanhar o estado do seu ticket através deste link (se aplicável):<br>
+                            <a href="{{ticket_details['uid']}}">{{ticket_details['uid']}}</a></p>
+                            <p>Obrigado pela sua paciência.</p>
+                            <p>Com os melhores cumprimentos,<br>A Sua Equipa de Suporte</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td align="center" class="footer">
+                            <p>&copy; {{current_year}} O Nome da Sua Empresa. Todos os direitos reservados.</p>
+                            <p>Se tiver alguma dúvida, responda a este email ou visite o nosso site.</p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>

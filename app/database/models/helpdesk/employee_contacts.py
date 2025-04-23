@@ -13,6 +13,9 @@ class EmployeeContacts(Model):
   class Meta:
     table = "employee_contacts"
 
+  def _contact(self):
+    return self.contact
+
   async def to_dict_log(self):
     contact_type = await self.contact_type
     return {

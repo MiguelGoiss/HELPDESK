@@ -71,3 +71,39 @@ async def recovery_email(request_user: dict):
       "An error occurred during the recovery process",
       str(e)
     )
+    
+async def ticket_email(ticket_details: dict, requester_info: dict, agent_info: dict | None = None, ticket_email_type: str = "create"):
+  # Load HTML template
+  template_path = "app/utils/templates/ticket_email.html"
+  with open(template_path, "r", encoding="utf-8") as file:
+    template_content = file.read()
+  
+  if ticket_email_type == 'create':
+    email_dict = {
+      "title": "Confirmação de Ticket de Suporte"
+    }
+  
+  email_dict['ticket_type'] = ticket_email_type
+  
+  # Render template with variables
+  html_content = Template(template_content).render(
+    email_dict=email_dict,
+    ticket_details=ticket_details,
+    requester_info=requester_info,
+    agent_info=agent_info,
+    current_year=datetime.now().year
+  )
+  
+  ccs = [cc['email'] for cc in ticket_details['ccs']]
+  if agent_info:
+    ccs.append(agent_info['email'])
+  
+  message = MessageSchema(
+    subject=ticket_details['subject'],
+    recipients=[requester_info['email']],
+    cc=ccs,
+    body=html_content,
+    subtype="html"
+  )
+  fm = FastMail(conf)
+  await fm.send_message(message)

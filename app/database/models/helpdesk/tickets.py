@@ -1,5 +1,9 @@
 from tortoise.models import Model
 from tortoise import fields
+from datetime import datetime
+import hashlib
+from tortoise.queryset import QuerySet
+
 
 class Tickets(Model):
   id = fields.IntField(pk=True)
@@ -8,12 +12,11 @@ class Tickets(Model):
   request = fields.TextField()
   response = fields.TextField(null=True)
   internal_comment = fields.TextField(null=True)
-  ccs = fields.JSONField(null=True)
   prevention_date = fields.DatetimeField(null=True)
-  created_at = fields.DatetimeField(auto_now_add=True)
+  created_at = fields.DatetimeField()
   closed_at = fields.DatetimeField(null=True)
   spent_time = fields.IntField(default=15)
-  supplier_reference = fields.CharField(max_length=255)
+  supplier_reference = fields.CharField(max_length=255, null=True)
 
   # --- Foreign Keys --- 
   company = fields.ForeignKeyField(
@@ -73,6 +76,25 @@ class Tickets(Model):
     null=True
   )
   
+  ccs = fields.ManyToManyField(
+    "helpdesk_models.Employees",
+    related_name='employee_ccs',
+    through='tickets_ccs',
+    backward_key="ticket_id",
+    forward_key="employee_id"
+  )
+  
+  # TODO Retirar este comentário quando os equipamentos estiverem feitos
+  # equipments = fields.ManyToManyField(
+  #   "helpdesk_models.Tickets_Equipments",
+  #   related_name='equipments',
+  #   through='tickets_equipments',
+  #   backward_key="ticket_id",
+  #   forward_key="equipment_id"
+  # )
+  
+  # TODO adicionar a many_to_many de fornecedores
+  
   # TODO adicionar as fk de segurança
   
   # --- End Foreign Keys ---
@@ -80,6 +102,71 @@ class Tickets(Model):
   class Meta:
     table = "tickets"
   
-  def _create_ticket(self, **kwargs):
-    print(**kwargs)
-    return Tickets.create(**kwargs)
+  async def to_dict_log(self) -> dict[str, any]:
+    print(await self.ccs.all())
+    try:
+      company = await self.company
+      category = await self.category
+      subcategory = await self.subcategory
+      status = await self.status
+      type_ = await self.type
+      priority = await self.priority
+      assistance_type = await self.assistance_type
+      created_by = await self.created_by
+      requester = await self.requester
+      agent = await self.agent
+      ccs = [await cc.to_dict_employee_emails() for cc in await self.ccs.all()]
+    except Exception as e:
+      raise e
+    
+    return {
+      "id": self.id,
+      "uid": self.uid,
+      "subject": self.subject,
+      "request": self.request,
+      "response": self.response,
+      "internal_comment": self.internal_comment,
+      "ccs": ccs,
+      "prevention_date": self.prevention_date.isoformat() if self.prevention_date else None,
+      "closed_at": self.closed_at.isoformat() if self.closed_at else None,
+      "spent_time": self.spent_time,
+      "supplier_reference": self.supplier_reference,
+      "company": company.name if company else None,
+      "category": category.name if category else None,
+      "subcategory": subcategory.name if subcategory else None,
+      "status": status.name if status else None,
+      "type": type_.name if type_ else None,
+      "priority": priority.name if priority else None,
+      "assistance_type": assistance_type.name if assistance_type else None,
+      "created_by": f"{created_by.first_name} {created_by.last_name}" if created_by else None,
+      "requester": f"{requester.first_name} {requester.last_name}" if requester else None,
+      "agent": f"{agent.first_name} {agent.last_name}" if agent else None,
+    }
+  
+  # async def to_dict(self):
+  #   return {
+      
+  #   }
+  
+  async def _create_ticket(self, **kwargs):
+    new_ticket = await Tickets.create(**kwargs)
+    # Cria os detalhes para o hash
+    try: 
+      created_at_str = new_ticket.created_at.isoformat()
+      data_to_hash = f"{new_ticket.id}-{created_at_str}-{new_ticket.requester_id}"
+    except AttributeError:
+      data_to_hash = f"{new_ticket.id}-{new_ticket.requester_id}-{datetime.now().isoformat()}"
+    
+    # Cria o uid
+    hasher = hashlib.sha256()
+    hasher.update(data_to_hash.encode('utf-8'))
+    generated_uid = hasher.hexdigest()
+    # Adiciona apenas o uid no novo ticket
+    new_ticket.uid = generated_uid
+    ticket_details = await new_ticket.to_dict_log()
+    new_ticket.subject = f"[TICKET #{ticket_details['id']}] - {ticket_details['requester']} | {ticket_details['category']} | {ticket_details['priority']} | {new_ticket.created_at.strftime("%d/%m/%Y - %H:%M:%S")}"
+    await new_ticket.save(update_fields=['uid', 'subject'])
+    
+    return new_ticket
+  
+  

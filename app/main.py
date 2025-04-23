@@ -1,8 +1,14 @@
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
-from app.routes.users.users import router as user_router
-from app.database.database import init_db, close_db
 from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv
+
+# --- Carrega as variaveis do .env ---
+# O load_dotenv é inicializado aqui porque vai ser necessário nos ficheiros abaixo
+load_dotenv()
+# --- Variavéis do .env já estão carregadas  ---
+
+from app.database.database import init_db, close_db
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -20,4 +26,8 @@ app.add_middleware(
   allow_headers=["*"],
 )
 
-app.include_router(user_router)
+from app.routes.users.users import router as employees_router
+from app.routes.tickets import router as tickets_router
+
+app.include_router(employees_router)
+app.include_router(tickets_router)
