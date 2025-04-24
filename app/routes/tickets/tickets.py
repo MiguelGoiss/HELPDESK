@@ -1,14 +1,16 @@
 from fastapi import APIRouter, Request, Query, Depends, UploadFile, File
 from app.schemas.tickets import BaseCreateTicket
 from app.services.users import require_permission
-from app.utils.helpers.token import validate_optional_access_token
+from app.utils.helpers.token import validate_optional_access_token, validate_access_token
 from app.controllers.tickets import (
   handle_ticket_creation,
+  handle_fetch_tickets,
+  handle_fetch_ticket_details,
 )
 
 router = APIRouter(prefix="/tickets", tags=["Tickets"])
 
-@router.post("/ApiV1/tickets")
+@router.post("")
 async def create_ticket(
   ticket_data: BaseCreateTicket = Depends(BaseCreateTicket.as_form),
   files: list[UploadFile] | None = File(None),
@@ -20,6 +22,32 @@ async def create_ticket(
     files=files,
     current_user=current_user
   )
-  
-  
-  
+
+@router.get("", dependencies=[Depends(require_permission("tecnico"))])
+async def read_tickets(
+  request: Request,
+  page: int = Query(1, ge=1, description="Page number"),
+  page_size: int = Query(10, ge=1, le=100, description="Items per page"),
+  and_filters: str | None = None,
+  order_by: str | None = None,
+  search: str | None = None,
+  _: dict = Depends(validate_access_token)
+):
+  query_params = dict(request.query_params)
+  tickets_data = await handle_fetch_tickets(
+    request.url.path,
+    page,
+    page_size,
+    query_params,
+    search,
+    and_filters,
+    order_by,
+  )
+  return tickets_data
+
+@router.get("/details")
+async def get_ticket_details(
+  uid: str
+  ):
+  ticket_details = await handle_fetch_ticket_details(uid)
+  return ticket_details

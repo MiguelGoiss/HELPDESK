@@ -1,41 +1,90 @@
-from fastapi import Depends, UploadFile, File
+from fastapi import Depends, UploadFile
 from fastapi.responses import JSONResponse
-from app.services.tickets import create_ticket
+from app.services.tickets import (
+  create_ticket,
+  fetch_tickets,
+  fetch_ticket_details
+)
 from app.utils.errors.exceptions import CustomError
 from app.schemas.tickets import BaseCreateTicket
 import logging
+import json
 
 logger = logging.getLogger(__name__)
 
 async def handle_ticket_creation(
-  ticket_data: BaseCreateTicket, # Receive the validated Pydantic model
-  files: list[UploadFile] | None, # Receive the list of files (or None)
+  ticket_data: BaseCreateTicket,
+  files: list[UploadFile] | None = None,
   current_user: dict | None = None
 ):
-  """
-  Controller function to handle the logic of ticket creation,
-  including passing files to the service layer.
-  """
   try:
     logger.info(f"Handling ticket creation request by user: {current_user.get('id') if current_user else 'anonymous'}")
-    # Pass the ticket data and files to the service function
     new_ticket_details = await create_ticket(
       ticket_data=ticket_data,
       current_user=current_user,
       files=files
     )
     logger.info(f"Ticket created successfully. Details: {new_ticket_details}")
-    # Return the result (e.g., details of the created ticket)
-    # The service already returns ticket_log_details_filtered
     return new_ticket_details
   except CustomError as e:
-      # Re-raise CustomErrors to be handled by FastAPI exception handlers
       logger.error(f"CustomError during ticket creation: {e.detail}", exc_info=True)
       raise e
   except Exception as e:
-    # Catch unexpected errors, log them, and raise a generic CustomError
-    # or let FastAPI's default 500 handler catch it.
     logger.error(f"Unexpected error during ticket creation: {e}", exc_info=True)
-    # You might want to raise a more specific error or just re-raise
-    # raise CustomError(status_code=500, detail="An unexpected error occurred during ticket creation.") from e
-    raise e # Re-raising allows FastAPI's handlers to manage it
+    raise e
+
+async def handle_fetch_tickets(
+  path: str,
+  page: int,
+  page_size: int,
+  original_query_params: dict,
+  search: str | None = None,
+  and_filters: str | None = None,
+  order_by: str | None = None
+):
+  try:
+    logger.info(f"Handling fetch tickets request. Page: {page}, Page Size: {page_size}, Search: '{search}', Order By: '{order_by}'")
+    logger.debug(f"Raw and_filters string: {and_filters}")
+
+    parsed_and_filters = None
+    if and_filters:
+      try:
+        parsed_and_filters = json.loads(and_filters)
+        if not isinstance(parsed_and_filters, dict):
+          raise ValueError("Parsed JSON is not a dictionary")
+        logger.debug(f"Parsed and_filters: {parsed_and_filters}")
+      except (json.JSONDecodeError, ValueError) as json_error:
+        logger.error(f"Failed to parse and_filters JSON string: {and_filters}. Error: {json_error}", exc_info=True)
+        raise CustomError(400, f"Invalid format for 'and_filters'. Expected a valid JSON object string. Error: {json_error}")
+
+    tickets_result = await fetch_tickets(
+      path=path,
+      page=page,
+      page_size=page_size,
+      original_query_params=original_query_params,
+      search=search,
+      and_filters=parsed_and_filters,
+      order_by=order_by
+    )
+    logger.info(f"Successfully fetched tickets. Page: {page}, Count: {len(tickets_result.get('items', []))}")
+    return tickets_result
+
+  except CustomError as e:
+    logger.error(f"CustomError during fetching tickets: Status={e.status_code}, Detail={e.detail}", exc_info=True)
+    raise e
+
+  except Exception as e:
+    logger.error(f"Unexpected error during fetching tickets: {e}", exc_info=True)
+    raise e
+  
+async def handle_fetch_ticket_details(
+  uid: str,
+  current_user: dict | None = None
+):
+  try:
+    db_ticket_details = await fetch_ticket_details(uid)
+    return db_ticket_details
+  except CustomError as e:
+    raise e
+  except Exception as e:
+    raise e

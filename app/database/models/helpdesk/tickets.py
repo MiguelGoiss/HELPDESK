@@ -3,7 +3,8 @@ from tortoise import fields
 from datetime import datetime
 import hashlib
 from tortoise.queryset import QuerySet
-
+import pytz
+lisbon_tz = pytz.timezone('Europe/Lisbon')
 
 class Tickets(Model):
   id = fields.IntField(pk=True)
@@ -103,7 +104,6 @@ class Tickets(Model):
     table = "tickets"
   
   async def to_dict_log(self) -> dict[str, any]:
-    print(await self.ccs.all())
     try:
       company = await self.company
       category = await self.category
@@ -143,10 +143,75 @@ class Tickets(Model):
       "agent": f"{agent.first_name} {agent.last_name}" if agent else None,
     }
   
-  # async def to_dict(self):
-  #   return {
+  async def to_dict(self):
+    try:
+      category = await self.category
+      subcategory = await self.subcategory if self.subcategory else None
+      status = await self.status
+      priority = await self.priority
+      requester = await self.requester
+      agent = await self.agent if self.agent else None
+      attachments = [attachment for attachment in await self.attachments.all()]
+    except Exception as e:
+      raise e
+    
+    return {
+      "id": self.id,
+      "uid": self.uid,
+      "subject": self.subject,
+      "request": self.request,
+      "response": self.response,
+      "closed_at": self.closed_at,
+      "created_at": self.created_at,
+      "status": status,
+      "priority": priority,
+      "category": category,
+      "subcategory": subcategory,
+      "requester": await requester.to_dict_contacts(),
+      "agent": await agent.to_dict_contacts() if agent else None,
+      "attachments": attachments
+    }
+  
+  async def to_dict_details(self):
+    try:
+      category = await self.category
+      subcategory = await self.subcategory if self.subcategory else None
+      status = await self.status
+      priority = await self.priority
+      requester = await self.requester
+      agent = await self.agent if self.agent else None
+      attachments = [attachment for attachment in await self.attachments.all()]
+      ccs = [await cc.to_dict_employee_emails() for cc in await self.ccs.all()]
+      created_by = await self.created_by if self.created_by else None
+      assistance_type = await self.assistance_type
+      type_ = await self.type
+      company = await self.company
+    except Exception as e:
+      raise e
+
+    return {
+      "id": self.id,
+      "uid": self.uid,
+      "subject": self.subject,
+      "request": self.request,
+      "response": self.response,
+      "closed_at": self.closed_at.strftime("%d/%m/%Y - %H:%M") if self.closed_at else None,
+      "created_at": self.created_at.strftime("%d/%m/%Y - %H:%M"),
+      "prevention_date": self.prevention_date.astimezone(lisbon_tz).isoformat(),
+      "status": status,
+      "priority": priority,
+      "category": category,
+      "subcategory": subcategory,
+      "requester": await requester.to_dict_contacts(),
+      "agent": await agent.to_dict_contacts() if agent else None,
+      "created_by":created_by,
+      "assistance_type":assistance_type,
+      "type":type_,
+      "company":company,
+      "attachments": attachments,
+      "ccs":ccs,
       
-  #   }
+    }
   
   async def _create_ticket(self, **kwargs):
     new_ticket = await Tickets.create(**kwargs)

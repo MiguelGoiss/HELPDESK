@@ -92,13 +92,14 @@ async def validate_access_token(
       "Could not validate credentials"
     ) from e
   
-  except HTTPException as e:
+  except CustomError as e:
     raise e
   
   except Exception as e:
-    raise HTTPException(
-      status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-      detail="An internal error occurred during authentication.",
+    raise CustomError(
+      500,
+      "An internal error occurred during authentication.",
+      str(e)
     ) from e
 
 async def validate_optional_access_token(

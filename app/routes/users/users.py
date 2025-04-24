@@ -28,12 +28,9 @@ async def read_users(
   page: int = Query(1, ge=1, description="Page number"),
   page_size: int = Query(10, ge=1, le=100, description="Items per page"),
   and_filters: str | None = None,
-  # For AND filters, FastAPI can parse dicts from query params like:
-  # ?and_filters[department__name]=IT&and_filters[local_id]=5
   order_by: str | None = None,
   search: str | None = None,
   _: dict = Depends(validate_access_token)
-  # current_user: dict = Depends(get_current_active_user)
 ):
   query_params = dict(request.query_params)
   users_data = await handle_fetch_users(

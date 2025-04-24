@@ -16,10 +16,10 @@ async def paginate(
 
   # Aplicar limit and offset para obter os dados
   dbData = await queryset.offset((page - 1) * page_size).limit(page_size)
-
+  
   # Constroi a resposta com os dados prefetched
   data_list = [await data.to_dict() for data in dbData]
-
+  
   # Geração do link
   base_params = original_query_params.copy() if original_query_params else {}
 
