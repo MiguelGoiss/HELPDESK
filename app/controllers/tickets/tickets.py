@@ -3,7 +3,8 @@ from fastapi.responses import JSONResponse
 from app.services.tickets import (
   create_ticket,
   fetch_tickets,
-  fetch_ticket_details
+  fetch_ticket_details,
+  update_ticket_details,
 )
 from app.utils.errors.exceptions import CustomError
 from app.schemas.tickets import BaseCreateTicket
@@ -88,3 +89,24 @@ async def handle_fetch_ticket_details(
     raise e
   except Exception as e:
     raise e
+
+async def handle_update_ticket(
+  uid: str,
+  ticket_data: dict,
+  current_user: dict,
+  files: list[UploadFile] | None = None
+):
+  try:
+    logger.info(f"Handling ticket update request by user: {current_user.get('id')}")
+    updated_ticket_details = await update_ticket_details(
+      uid,
+      ticket_data,
+      current_user,
+      files,
+    )
+    return updated_ticket_details
+  except CustomError as e:
+    raise e
+  except Exception as e:
+    raise e
+    

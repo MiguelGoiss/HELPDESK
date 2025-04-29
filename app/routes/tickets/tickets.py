@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Request, Query, Depends, UploadFile, File
-from app.schemas.tickets import BaseCreateTicket
+from app.schemas.tickets import BaseCreateTicket, BaseUpdateTicket
 from app.services.users import require_permission
 from app.utils.helpers.token import validate_optional_access_token, validate_access_token
 from app.controllers.tickets import (
   handle_ticket_creation,
   handle_fetch_tickets,
   handle_fetch_ticket_details,
+  handle_update_ticket,
 )
 
 router = APIRouter(prefix="/tickets", tags=["Tickets"])
@@ -45,9 +46,25 @@ async def read_tickets(
   )
   return tickets_data
 
-@router.get("/details")
+@router.get("/details/{uid}")
 async def get_ticket_details(
   uid: str
-  ):
+):
   ticket_details = await handle_fetch_ticket_details(uid)
   return ticket_details
+
+@router.put("/details/{uid}", dependencies=[Depends(require_permission("tecnico"))])
+async def update_ticket(
+  uid: str,
+  ticket_data: dict = Depends(BaseUpdateTicket.as_form),
+  current_user: dict = Depends(validate_access_token),
+  files: list[UploadFile] | None = File(None)
+):
+  updated_ticket = await handle_update_ticket(
+    uid,
+    ticket_data,
+    current_user,
+    files
+  )
+  return updated_ticket
+

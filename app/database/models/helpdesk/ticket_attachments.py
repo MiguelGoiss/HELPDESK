@@ -15,7 +15,8 @@ class TicketAttachments(Model):
   agent = fields.ForeignKeyField(
     "helpdesk_models.Employees",
     related_name="uploaded_attachments",
-    db_column="agent_id"
+    db_column="agent_id",
+    null=True
   )
   
   class Meta:

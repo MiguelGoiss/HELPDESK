@@ -13,11 +13,12 @@ def sanitize_input(
   """
   Sanitize user input to prevent security vulnerabilities and malformed data.
   
+  For 'text' input type, multiple consecutive whitespace characters within the string will be collapsed into a single space.
+
   Args:
     user_input: The input to be sanitized (str, int, float, etc.)
     input_type: Type of input ('text', 'email', 'url', 'int', 'float')
-    max_length: Maximum allowed length for string inputs
-    allow_html: Whether to allow HTML tags (False by default for security)
+    allow_html: Whether to allow HTML tags (False by default for security). If False, HTML entities are escaped.
     allow_special_chars: Whether to allow special characters
     strip: Whether to strip whitespace from both ends
   
@@ -37,10 +38,6 @@ def sanitize_input(
   # Strip whitespace if requested
   if strip:
     str_input = str_input.strip()
-  
-  # Validate length
-  # if len(str_input) > max_length:
-  #   raise ValueError(f"Input exceeds maximum length of {max_length} characters")
   
   # Handle different input types
   if input_type == "email":
@@ -67,12 +64,15 @@ def sanitize_input(
       raise ValueError("Input must be a valid number")
   
   else:  # text or other
-    # Escape HTML by default (unless explicitly allowed)
+    # 1. Collapse multiple internal whitespaces to a single space
+    str_input = re.sub(r'\s+', ' ', str_input)
+
+    # 2. Escape HTML by default
     if not allow_html:
       str_input = escape(str_input)
     
-    # Remove special characters if not allowed
+    # 3. Remove special characters if not allowed
     if not allow_special_chars:
-      str_input = re.sub(r'[^\w\s-]', '', str_input)
+      str_input = re.sub(r'[^\w\s\-.,!?:]', '', str_input)
     
     return str_input

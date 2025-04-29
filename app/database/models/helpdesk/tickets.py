@@ -107,14 +107,14 @@ class Tickets(Model):
     try:
       company = await self.company
       category = await self.category
-      subcategory = await self.subcategory
+      subcategory = await self.subcategory if self.subcategory else None
       status = await self.status
       type_ = await self.type
       priority = await self.priority
-      assistance_type = await self.assistance_type
-      created_by = await self.created_by
+      assistance_type = await self.assistance_type if self.assistance_type else None
+      created_by = await self.created_by if self.created_by else None
       requester = await self.requester
-      agent = await self.agent
+      agent = await self.agent if self.agent else None
       ccs = [await cc.to_dict_employee_emails() for cc in await self.ccs.all()]
     except Exception as e:
       raise e
@@ -127,7 +127,7 @@ class Tickets(Model):
       "response": self.response,
       "internal_comment": self.internal_comment,
       "ccs": ccs,
-      "prevention_date": self.prevention_date.isoformat() if self.prevention_date else None,
+      "prevention_date": self.prevention_date.astimezone(lisbon_tz).isoformat() if self.prevention_date else None,
       "closed_at": self.closed_at.isoformat() if self.closed_at else None,
       "spent_time": self.spent_time,
       "supplier_reference": self.supplier_reference,
@@ -183,7 +183,7 @@ class Tickets(Model):
       attachments = [attachment for attachment in await self.attachments.all()]
       ccs = [await cc.to_dict_employee_emails() for cc in await self.ccs.all()]
       created_by = await self.created_by if self.created_by else None
-      assistance_type = await self.assistance_type
+      assistance_type = await self.assistance_type if self.assistance_type else None
       type_ = await self.type
       company = await self.company
     except Exception as e:
@@ -197,7 +197,7 @@ class Tickets(Model):
       "response": self.response,
       "closed_at": self.closed_at.strftime("%d/%m/%Y - %H:%M") if self.closed_at else None,
       "created_at": self.created_at.strftime("%d/%m/%Y - %H:%M"),
-      "prevention_date": self.prevention_date.astimezone(lisbon_tz).isoformat(),
+      "prevention_date": self.prevention_date.astimezone(lisbon_tz).isoformat() if self.prevention_date else None,
       "status": status,
       "priority": priority,
       "category": category,

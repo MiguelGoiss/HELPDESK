@@ -1,32 +1,28 @@
 from functools import reduce
 from operator import or_
-from app.database.models.helpdesk import Tickets, TicketLogs, TicketAttachments, Employees
-from app.services.users import get_users_by_ids, get_employee_basic_info
+from app.database.models.helpdesk import Tickets, TicketLogs
+from app.utils.helpers.tickets import (
+  _handle_file_uploads,
+  _handle_ticket_emails,
+  _get_ticket_for_update,
+  _authorize_ticket_update,
+  _prepare_update_data,
+  _apply_direct_updates,
+  _handle_automatic_status_update,
+  _handle_closed_at_update,
+  _handle_ccs_update,
+  _handle_update_logging,
+  _handle_update_notifications,
+)
+from app.services.users import get_users_by_ids
 from app.utils.errors.exceptions import CustomError
-from app.services.emails.emails import ticket_email
 from app.utils.helpers.paginate import paginate
 from datetime import datetime, timedelta
 from app.services.logs import LogService
 from tortoise.expressions import Q
-# from tortoise import connections
 from tortoise.transactions import in_transaction
 from fastapi import UploadFile
-from pathlib import Path
-import aiofiles
-import os
-import uuid
 import time
-
-# --- Configurações de criação de ticket ---
-TICKET_FILES_PATH = os.getenv('TICKET_FILES_PATH')
-
-# Define onde os uploads vão ser guardados.
-UPLOAD_DIRECTORY = Path(TICKET_FILES_PATH)
-# Garante que a pasta existe
-UPLOAD_DIRECTORY.mkdir(parents=True, exist_ok=True)
-# Extensões de ficheiros permitidas
-ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".pdf", ".msg"}
-# --- Fim da Configuração ---
 
 # --- Inicio da criação do ticket ---
 async def create_ticket(
@@ -76,7 +72,7 @@ async def create_ticket(
       # Lida com os uploads de ficheiros, guarda e adiciona à DB
       if files:
         # Qualquer exceção que ocorre dentro de handle_file_uploads vai abortar a transação
-        await handle_file_uploads(new_ticket_orm, files)
+        await _handle_file_uploads(new_ticket_orm, files, current_user)
 
       # --- A transação insere todos os dados se não foi levantada nenhuma exceção ---
       updated_ticket_details = await new_ticket_orm.to_dict_log()
@@ -90,7 +86,7 @@ async def create_ticket(
 
   # Envia o email de confirmação para o cliente com técnico (se houver) e os utilizadores selecionados como ccs em cc
   try:
-    await handle_ticket_emails(new_ticket_orm, updated_ticket_details, "create")
+    await _handle_ticket_emails(new_ticket_orm, updated_ticket_details, "create")
   except Exception as email_error:
     raise CustomError(
       500,
@@ -100,22 +96,6 @@ async def create_ticket(
 
   updated_ticket_details.pop("uid")
   return updated_ticket_details
-
-async def handle_ticket_emails(ticket: Tickets, ticket_info: dict, email_type: str | None = None):
-  try:
-    requester_info = await get_employee_basic_info(ticket.requester_id)
-    agent_info = await get_employee_basic_info(ticket.agent_id)
-    await ticket_email(ticket_info, requester_info, agent_info, email_type) 
-
-  except CustomError as e:
-    raise e
-  
-  except Exception as e:
-    raise CustomError(
-      500,
-      "Ocorreu um erro a enviar o email",
-      str(e)
-    ) from e
   
 async def handle_ticket_creation_ccs(ccs_ids: list[int], new_ticket: Tickets):
   if not ccs_ids:
@@ -136,84 +116,6 @@ async def handle_ticket_creation_ccs(ccs_ids: list[int], new_ticket: Tickets):
     # Raise a specific error to ensure transaction rollback
     raise CustomError(500, f"Failed to add CCS employees to ticket {new_ticket.id}", str(e)) from e
 
-async def handle_file_uploads(ticket: Tickets, files: list[UploadFile]):
-  attachment_records_data = []
-  saved_file_paths = []
-  try:
-    if files:
-      date_now = datetime.now()
-      for file in files:
-        if not file or not file.filename:
-          continue
-
-        file_ext = Path(file.filename).suffix.lower()
-        if file_ext not in ALLOWED_EXTENSIONS:
-          raise CustomError(400, "Ocorreu um erro a inserir um fichiero. O ticket não foi criado.", f"Tipo de ficheiro não permitido: {file.filename}, apenas são permitidas as seguintes extensões: {', '.join(ALLOWED_EXTENSIONS)}")
-        
-        unique_filename = f"{uuid.uuid4()}{file_ext}"
-        date_save_path = UPLOAD_DIRECTORY / date_now.strftime("%Y/%m/%d")
-        date_save_path.mkdir(parents=True, exist_ok=True)
-        save_path = date_save_path / unique_filename 
-
-        try:
-          # Guarda o ficheiro async
-          async with aiofiles.open(save_path, 'wb') as out_file:
-            while content := await file.read(1024 * 1024): # Lê o ficheiro aos "pedaços"
-              await out_file.write(content)
-          saved_file_paths.append(save_path) # Adiciona o ficheiro adicionado à lista
-
-          # Prepara os dados do ficheiro para a DB
-          attachment_data = {
-            "filename": unique_filename,
-            "original_name": file.filename,
-            "extension": file_ext,
-            "ticket_id": ticket.id,
-            "agent_id": ticket.agent_id
-          }
-          attachment_records_data.append(attachment_data)
-
-        except Exception as save_error:
-          # CRITICO: Se guardar um ficheiro falhar, abortar a transação com um erro
-          raise CustomError(500, f"Erro ao guardar o ficheiro: {file.filename}", str(save_error)) from save_error
-        finally:
-          # Garante que os ficheiros estão fechados
-          if file:
-            await file.close()
-          
-          if saved_file_paths:
-            await LogService.log_action(
-              f"Adicionou {len(saved_file_paths)} anexo(s)",
-              ticket.requester_id,
-              TicketLogs,
-              ticket.id,
-              None,
-              attachment_records_data
-            )
-
-    # Bulk create dos ficheiros
-    if attachment_records_data:
-      try:
-        # Esta operação é parte da transação iniciada no create_ticket
-        await TicketAttachments.bulk_create([TicketAttachments(**data) for data in attachment_records_data])
-      except Exception as db_error:
-        # CRÍTICO: A operação falhou a transação será revertida
-        # Tenta limpar os ficheiros guardados no disco durante esta função
-        for path in saved_file_paths:
-          try:
-            if path.is_file(): # Check if it exists and is a file before removing
-              os.remove(path)
-          except OSError as cleanup_error:
-            # Log cleanup error but proceed to raise the main DB error
-            print(f"Error cleaning up file {path}: {cleanup_error}")
-        # Raise an error to ensure the transaction rollback is triggered correctly by the caller.
-        raise CustomError(500, "Erro ao guardar anexos na base de dados", str(db_error)) from db_error
-
-  except CustomError as e:
-    raise e
-  
-  except Exception as e:
-    raise CustomError(500, "Erro inesperado no processamento de ficheiros", str(e)) from e
-
 # --- Fim da criação do ticket ---
 
 # --- Inicio do get de todos os tickets ---
@@ -226,7 +128,7 @@ DATE_FIELDS: set[str] = {
   'closed_at',
 }
 
-# Campos permitidos para a pesquisa geral 'search' (OR) - Adjust as needed
+# Campos permitidos para a pesquisa geral 'search' (OR) (É uma lista devido a uma iteração que tem de ser feita no search de or)
 DEFAULT_OR_SEARCH_FIELDS: list[str] = [
   'id',
   'uid',
@@ -459,7 +361,7 @@ async def fetch_ticket_details(uid: str) -> dict:
       'attachments',
       'type',
       'assistance_type',
-      'created_by'  
+      'created_by'
     )
 
     # Check if the ticket was found
@@ -478,7 +380,7 @@ async def fetch_ticket_details(uid: str) -> dict:
 
 # --- Fim do get dos detalhes de um ticket pelo uid ---
 
-# --- Inicio da atualização de um ticket ---
+# --- Inicio do update de um ticket pelo uid ---
 
 async def update_ticket_details(
     uid: str,
@@ -486,114 +388,78 @@ async def update_ticket_details(
     current_user: dict,
     files: list[UploadFile] | None = None
     ) -> dict:
-  if not current_user or 'id' not in current_user or 'permissions' not in current_user:
-    raise CustomError(401, "Não autenticado", "Informações do utilizador atual inválidas ou ausentes.")
 
+  ticket = await _get_ticket_for_update(uid)
+  # _authorize_ticket_update(ticket, current_user)
+  # Guarda o estado do ticket antes de qualquer alteração para logs e comparações
+  old_ticket_details = await ticket.to_dict_log()
+  original_agent_id_value = ticket.agent_id # Capture the actual ID from the modeloriginal_status_id_value
+  
+
+  # Prepara os dados para o update
+  update_data, ccs_ids_to_update = _prepare_update_data(ticket_data)
+  
+  # Inicializa um dict para guardar alterações para log ou notificações (email)
+  # changed_details_for_log = {}
+  assigned = False
   async with in_transaction('helpdesk') as conn:
     try:
-      # 1. Fetch the ticket and necessary relations
-      ticket = await Tickets.get_or_none(uid=uid).prefetch_related(
-        'status', 'priority', 'category', 'subcategory', 'requester',
-        'agent', 'company', 'ccs', 'type', 'assistance_type', 'created_by'
-      )
-      if not ticket:
-        raise CustomError(404, "Ticket não encontrado", f"Nenhum ticket encontrado com o UID: {uid}")
+      # --- Operações em transação ---
+      # Aplica alterações nos campos diretos.
+      _apply_direct_updates(ticket, update_data)
+      
+      # Lida com as alterações automáticas de estado
+      assigned = _handle_automatic_status_update(ticket, update_data, original_agent_id_value)
+      
+      # Lida com o estado "fechado"
+      _handle_closed_at_update(ticket, old_ticket_details)
+      
+      # Lida com o update dos CCS
+      await _handle_ccs_update(ticket, ccs_ids_to_update)
 
-      # 2. Authorization Check (Agent or 'tecnico')
-      user_id = current_user['id']
-      user_permissions = current_user.get('permissions', [])
-      # is_agent = (ticket.agent_id == user_id)
-      has_tecnico_permission = ('tecnico' in user_permissions) # Adjust permission name if needed
-
-      if not has_tecnico_permission: # not is_agent and
-        raise CustomError(403, "Acesso negado", "Você não tem permissão para editar este ticket.")
-
-      # 3. Get old state for logging
-      old_ticket_details = await ticket.to_dict_log()
-
-      # 4. Prepare update data
-      update_data = ticket_data.dict(exclude_unset=True, exclude_none=True)
-      ccs_ids_to_update = update_data.pop('ccs', None)
-
-      # Previne alterar campos que não devem ser alterados
-      protected_fields = ['id', 'uid', 'created_at', 'created_by_id', 'requester_id']
-      for field in protected_fields:
-        update_data.pop(field, None)
-
-      # 5. Apply updates to the ticket object
-      status_changed_to_closed = False
-      for key, value in update_data.items():
-        if hasattr(ticket, key):
-          # Check if status is changing to a 'closed' status (assuming ID 4 is closed)
-          if key == 'status_id' and getattr(ticket, key) != value and value == 4: # Adjust '4' if your closed status ID is different
-            status_changed_to_closed = True
-          setattr(ticket, key, value)
-        else:
-          print(f"Warning: Attempted to update non-existent field '{key}' on ticket {uid}") # Or raise error
-
-      # Update closed_at if status changed to closed
-      if status_changed_to_closed and not ticket.closed_at:
-        ticket.closed_at = datetime.now()
-      elif 'status_id' in update_data and update_data['status_id'] != 4 and ticket.closed_at:
-        # If reopening, clear closed_at (optional behavior)
-        ticket.status_id = 2 # Alterar para id de reaberto?
-        ticket.closed_at = None
-
-      # 6. Handle CCS updates (replace existing CCS with new list)
-      if ccs_ids_to_update is not None: # Allow empty list to clear CCS
-        ccs_employees = await get_users_by_ids(ccs_ids_to_update) if ccs_ids_to_update else []
-        await ticket.ccs.clear() # Remove existing
-        if ccs_employees:
-          await ticket.ccs.add(*ccs_employees) # Add new ones
-
-      # 7. Handle file uploads (if any) - uses the existing handle_file_uploads function
+      # Lida com upload de ficheiros
       if files:
-        await handle_file_uploads(ticket, files)
+        await _handle_file_uploads(ticket, files, current_user)
 
-      # 8. Save the changes
+      # Guarda todas as alterações feitas
       await ticket.save()
+      
+      # Cria log das alterações
+      # Atualiza os detalhes atualizados do ticket com uma nova pesquisa na base de dados.
+      new_ticket_details = await _get_ticket_for_update(uid)
 
-      # 9. Log the changes
-      new_ticket_details = await ticket.to_dict_log()
-      # Filter details to only include changed fields for the log description
-      changed_details = {k: new_ticket_details[k] for k in new_ticket_details if k in old_ticket_details and new_ticket_details[k] != old_ticket_details[k]}
-      # Adiciona ccs ao log
-      if ccs_ids_to_update is not None:
-        changed_details['ccs'] = f"Updated to IDs: {ccs_ids_to_update}"
-
-      await LogService.log_action(
-        "Atualizado",
-        current_user['id'],
-        TicketLogs,
-        ticket.id,
+      # Passa a informação necessária para criar o log
+      await _handle_update_logging(
+        new_ticket_details,
         old_ticket_details,
-        changed_details
+        ccs_ids_to_update,
+        current_user['id']
       )
-
-      # --- Transaction commits here if no exceptions ---
+      # --- A Transação faz commit se não houver erros ---
 
     except CustomError as e:
       raise e
+    
     except Exception as e:
       print(f"Error during ticket update transaction for UID {uid}, rollback initiated: {e}")
       raise CustomError(500, "Ocorreu um erro ao atualizar o ticket", str(e)) from e
+  
+  # ---  Notifica o requerente ---
+  # Envia email após todas as alterações.
+  await _handle_update_notifications(ticket, assigned)
 
-  # --- Post-Transaction Actions (e.g., Email Notifications) ---
   try:
-    # Decide if email needs to be sent based on changes (e.g., response added, status changed)
-    if 'response' in changed_details or 'status_id' in changed_details: # Example condition
-      # Fetch fresh details if needed, or use new_ticket_details if sufficient
-      final_details = await ticket.to_dict_details() # Use detailed view for email
-      await handle_ticket_emails(ticket, final_details, "update")
-  except Exception as email_error:
-    # Log email error but don't fail the whole request as the update succeeded
-    print(f"Failed to send update email for ticket UID {uid}: {email_error}")
-    # Optionally, you could return a warning in the response
+    updated_ticket_details = await fetch_ticket_details(uid)
+    return updated_ticket_details
 
-  # Return the final state of the ticket
-  return await ticket.to_dict_details() # Return detailed view
+  except CustomError as e:
+    raise e
+  
+  except Exception as e:
+    raise CustomError(500, "Erro ao obter detalhes atualizados do ticket após a atualização.", str(e)) from e
 
 # --- Fim da atualização de um ticket ---
+
 
     
 
