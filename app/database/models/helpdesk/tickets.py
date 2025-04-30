@@ -128,7 +128,7 @@ class Tickets(Model):
       "internal_comment": self.internal_comment,
       "ccs": ccs,
       "prevention_date": self.prevention_date.astimezone(lisbon_tz).isoformat() if self.prevention_date else None,
-      "closed_at": self.closed_at.isoformat() if self.closed_at else None,
+      "closed_at": self.closed_at.astimezone(lisbon_tz).isoformat() if self.closed_at else None,
       "spent_time": self.spent_time,
       "supplier_reference": self.supplier_reference,
       "company": company.name if company else None,
@@ -144,32 +144,40 @@ class Tickets(Model):
     }
   
   async def to_dict(self):
-    try:
-      category = await self.category
-      subcategory = await self.subcategory if self.subcategory else None
-      status = await self.status
-      priority = await self.priority
-      requester = await self.requester
-      agent = await self.agent if self.agent else None
-      attachments = [attachment for attachment in await self.attachments.all()]
-    except Exception as e:
-      raise e
+    # Await related fields (even if prefetched)
+    category_obj = await self.category
+    subcategory_obj = await self.subcategory if self.subcategory else None # This might be None, handle below
+    status_obj = await self.status
+    priority_obj = await self.priority
+    requester_obj = await self.requester
+    agent_obj = await self.agent if self.agent else None
     
+    # Call .to_dict() on related objects if they exist (assuming these are sync)
+    category = category_obj#.to_dict() if category_obj else None
+    subcategory = subcategory_obj if subcategory_obj else None
+    status = status_obj#.to_dict() if status_obj else None
+    priority = priority_obj#.to_dict() if priority_obj else None
+    
+    # Await the async to_dict_contacts calls
+    requester = await requester_obj.to_dict_ticket_requester() if requester_obj else None
+    agent = await agent_obj.to_dict_ticket_agent() if agent_obj else None
+
     return {
       "id": self.id,
       "uid": self.uid,
       "subject": self.subject,
       "request": self.request,
       "response": self.response,
-      "closed_at": self.closed_at,
-      "created_at": self.created_at,
+      "closed_at": self.closed_at.astimezone(lisbon_tz).isoformat() if self.closed_at else None,
+      "created_at": self.created_at.astimezone(lisbon_tz).isoformat(),
       "status": status,
       "priority": priority,
       "category": category,
       "subcategory": subcategory,
-      "requester": await requester.to_dict_contacts(),
-      "agent": await agent.to_dict_contacts() if agent else None,
-      "attachments": attachments
+      "requester": requester,
+      "agent": agent,
+      # attachments_count comes from the annotation, should be fine
+      "attachments": self.attachments_count
     }
   
   async def to_dict_details(self):
@@ -217,7 +225,7 @@ class Tickets(Model):
     new_ticket = await Tickets.create(**kwargs)
     # Cria os detalhes para o hash
     try: 
-      created_at_str = new_ticket.created_at.isoformat()
+      created_at_str = new_ticket.created_at.astimezone(lisbon_tz).isoformat()
       data_to_hash = f"{new_ticket.id}-{created_at_str}-{new_ticket.requester_id}"
     except AttributeError:
       data_to_hash = f"{new_ticket.id}-{new_ticket.requester_id}-{datetime.now().isoformat()}"

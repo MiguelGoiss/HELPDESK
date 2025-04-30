@@ -5,7 +5,8 @@ from dotenv import load_dotenv
 
 # --- Carrega as variaveis do .env ---
 # O load_dotenv é inicializado aqui porque vai ser necessário nos ficheiros abaixo
-load_dotenv()
+load_dotenv(dotenv_path='.env.dev')
+
 # --- Variavéis do .env já estão carregadas  ---
 
 from app.database.database import init_db, close_db

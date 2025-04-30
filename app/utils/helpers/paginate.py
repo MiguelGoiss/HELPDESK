@@ -1,7 +1,7 @@
 from tortoise.queryset import QuerySet
 from math import ceil
 from urllib.parse import urlencode
-
+import time
 async def paginate(
   queryset: QuerySet,
   url: str,
@@ -10,13 +10,14 @@ async def paginate(
   # Pass original request query params to preserve filters/sorting in links
   original_query_params: dict[str, any] | None = None
 ) -> dict[str, any]:
+  
   # O count deve acontecer no filtro/order antes do limit/offset
   total_count = await queryset.count()
   total_pages = ceil(total_count / page_size) if page_size > 0 else 0
-
+  
   # Aplicar limit and offset para obter os dados
   dbData = await queryset.offset((page - 1) * page_size).limit(page_size)
-  
+
   # Constroi a resposta com os dados prefetched
   data_list = [await data.to_dict() for data in dbData]
   
@@ -38,6 +39,6 @@ async def paginate(
     "page": page,
     "page_size": page_size,
     "total_pages": total_pages,
-    "next_page": build_page_url(page + 1),
-    "previous_page": build_page_url(page - 1),
+    "next_page": build_page_url(page + 1)[7:] if page < total_pages else None, # dá skip ao prefixo do endpoint
+    "previous_page": build_page_url(page - 1)[7:] if page > 1 else None, # dá skip ao prefixo do endpoint
   }

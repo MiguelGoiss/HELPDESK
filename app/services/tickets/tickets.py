@@ -2,10 +2,11 @@ from functools import reduce
 from operator import or_
 from app.database.models.helpdesk import Tickets, TicketLogs
 from app.utils.helpers.tickets import (
+  _handle_ticket_creation_ccs,
   _handle_file_uploads,
   _handle_ticket_emails,
   _get_ticket_for_update,
-  _authorize_ticket_update,
+  # _authorize_ticket_update,
   _prepare_update_data,
   _apply_direct_updates,
   _handle_automatic_status_update,
@@ -20,6 +21,7 @@ from app.utils.helpers.paginate import paginate
 from datetime import datetime, timedelta
 from app.services.logs import LogService
 from tortoise.expressions import Q
+from tortoise.functions import Count
 from tortoise.transactions import in_transaction
 from fastapi import UploadFile
 import time
@@ -67,7 +69,7 @@ async def create_ticket(
       )
       
       if ccs_ids_to_add:
-        await handle_ticket_creation_ccs(ccs_ids_to_add, new_ticket_orm)
+        await _handle_ticket_creation_ccs(ccs_ids_to_add, new_ticket_orm)
 
       # Lida com os uploads de ficheiros, guarda e adiciona à DB
       if files:
@@ -96,25 +98,6 @@ async def create_ticket(
 
   updated_ticket_details.pop("uid")
   return updated_ticket_details
-  
-async def handle_ticket_creation_ccs(ccs_ids: list[int], new_ticket: Tickets):
-  if not ccs_ids:
-    return
-
-  try:
-    # Obtem os objetos dos colaboradores para os ids inseridos, using the transaction connection
-    ccs_employees_to_add = await get_users_by_ids(ccs_ids)
-
-    # Adiciona os colaboradores obtidos na many-to-many
-    if ccs_employees_to_add:
-      # This operation uses the connection implicitly via the new_ticket object
-      await new_ticket.ccs.add(*ccs_employees_to_add)
-      print(f"Successfully added {len(ccs_employees_to_add)} employees to CCS for ticket {new_ticket.id}")
-
-  except Exception as e:
-    print(f"Error adding CCS to ticket {new_ticket.id}: {e}")
-    # Raise a specific error to ensure transaction rollback
-    raise CustomError(500, f"Failed to add CCS employees to ticket {new_ticket.id}", str(e)) from e
 
 # --- Fim da criação do ticket ---
 
@@ -228,8 +211,8 @@ ALLOWED_ORDER_FIELDS: set[str] = {
 
 async def fetch_tickets(
   path: str,
-  page: int,
   page_size: int,
+  page: int,
   original_query_params: dict | None = None,
   # O parametro search serve para pesquisa geral (OR)
   search: str | None = None,
@@ -317,13 +300,24 @@ async def fetch_tickets(
     # Por defeito o order é pela data de criação
     queryset = queryset.order_by('-created_at')
 
+  # Annotate with the count of attachments instead of fetching all attachment objects
+  queryset = queryset.annotate(attachments_count=Count("attachments"))
+  
   queryset = queryset.prefetch_related(
     'status',
     'priority',
     'category',
-    'requester',
+    'subcategory',
+    'requester', 
+    'requester__department',
+    'requester__company',
+    'requester__local',
+    'requester__employee_relation',
     'agent',
-    'attachments'
+    'agent__department',
+    'agent__company',
+    'agent__local',
+    'agent__employee_relation',
   )
 
   # Helper de paginação
@@ -333,11 +327,10 @@ async def fetch_tickets(
       url=path,
       page=page,
       page_size=page_size,
-      original_query_params=original_query_params
+      original_query_params=original_query_params,
     )
   except Exception as e:
     raise CustomError(500, "Erro ao processar a lista de tickets.", str(e)) from e
-
 
   end = time.time()
   print(f"fetch_tickets execution time: {end-start:.4f}s")
@@ -387,20 +380,17 @@ async def update_ticket_details(
     ticket_data: dict,
     current_user: dict,
     files: list[UploadFile] | None = None
-    ) -> dict:
+  ) -> dict:
 
   ticket = await _get_ticket_for_update(uid)
   # _authorize_ticket_update(ticket, current_user)
   # Guarda o estado do ticket antes de qualquer alteração para logs e comparações
   old_ticket_details = await ticket.to_dict_log()
   original_agent_id_value = ticket.agent_id # Capture the actual ID from the modeloriginal_status_id_value
-  
 
   # Prepara os dados para o update
   update_data, ccs_ids_to_update = _prepare_update_data(ticket_data)
-  
-  # Inicializa um dict para guardar alterações para log ou notificações (email)
-  # changed_details_for_log = {}
+
   assigned = False
   async with in_transaction('helpdesk') as conn:
     try:

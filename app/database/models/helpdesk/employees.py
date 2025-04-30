@@ -66,6 +66,44 @@ class Employees(Model):
       "email": email,
     }
   
+  async def to_dict_ticket_agent(self) -> dict:
+    department = await self.department
+    company = await self.company
+    local = await self.local
+    department_dict = department.to_dict() if department else None
+    company_dict = company.to_dict() if company else None
+    local_dict = local.to_dict() if local else None
+    return {
+      "id": self.id,
+      "first_name": self.first_name,
+      "last_name": self.last_name,
+      "full_name": self.full_name,
+      "department": department_dict,
+      "company": company_dict,
+      "local": local_dict
+    }
+
+  async def to_dict_ticket_requester(self) -> dict:
+    department = await self.department
+    company = await self.company
+    local = await self.local
+    department_dict = department.to_dict() if department else None
+    company_dict = company.to_dict() if company else None
+    local_dict = local.to_dict() if local else None
+    contact_obj = await self.employee_relation.filter(public=True, contact_type_id=4).first()
+    extension = contact_obj._contact() if contact_obj else None
+    
+    return {
+      "id": self.id,
+      "first_name": self.first_name,
+      "last_name": self.last_name,
+      "full_name": self.full_name,
+      "department": department_dict,
+      "company": company_dict,
+      "local": local_dict,
+      "extension": extension,
+    }
+  
   async def to_dict_contacts(self) -> dict:
     department = await self.department
     company = await self.company

@@ -7,6 +7,8 @@ from jose import jwt
 from jose.exceptions import JWSError
 from app.utils.errors.exceptions import CustomError
 from app.utils.helpers.token import validate_access_token
+import pytz
+lisbon_tz = pytz.timezone('Europe/Lisbon')
 
 load_dotenv()
 
@@ -28,7 +30,7 @@ async def create_token(data: dict, token_type: str = 'access'):
   else:
     expire_time = { "hours": RECOVERY_TOKEN_EXPIRE_HOURS }
     secret = JWT_RECOVERY_SECRET
-  expire = datetime.now() + timedelta(**expire_time)
+  expire = datetime.now().astimezone(lisbon_tz) + timedelta(**expire_time)
   to_encode["exp"] = expire
   encoded_jwt = jwt.encode(to_encode, secret, algorithm='HS256')
   return encoded_jwt

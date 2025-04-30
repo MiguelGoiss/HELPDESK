@@ -1,11 +1,5 @@
 import os
 from urllib.parse import quote_plus
-from dotenv import load_dotenv
-
-# Load environment variables
-load_dotenv(dotenv_path='.env.dev')
-
-# encoded_password = quote_plus(os.getenv('DB_PASSWORD'))
 
 DATABASE_CONFIG = {
   "connections": {
@@ -17,6 +11,9 @@ DATABASE_CONFIG = {
         "user": os.getenv('HELPDESKDB_USER'),
         "password": os.getenv('HELPDESKDB_PASSWORD'),
         "database": os.getenv('HELPDESKDB_NAME'),
+        "minsize": 1,
+        "maxsize": 10,
+        "connect_timeout": 30, # segundos
       }
     },
     "equipments": {
@@ -27,6 +24,9 @@ DATABASE_CONFIG = {
         "user": os.getenv('ATIVOSDB_USER'),
         "password": os.getenv('ATIVOSDB_PASSWORD'),
         "database": os.getenv('ATIVOSDB_NAME'),
+        "minsize": 1,
+        "maxsize": 10,
+        "connect_timeout": 30, # segundos
       }
     }
   },

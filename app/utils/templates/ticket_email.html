@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Seu Ticket de Suporte Foi Criado</title>
     <style type="text/css">
         /* Reset CSS básico para compatibilidade */
         body { margin: 0; padding: 0; }
@@ -56,7 +55,7 @@
             font-size: 15px;
         }
         a {
-            color: #1a73e8; /* Cor típica de link do Google */
+            color: #1a73e8;
             text-decoration: none;
         }
         a:hover {
@@ -76,6 +75,49 @@
                     </tr>
                     <tr>
                         <td align="left" class="content">
+                            {% if email_dict['text_1'] %}
+                                {% for phrase in email_dict['text_1'] %}
+                                    <p style="padding:0; margin:0;">{{phrase}}</p>
+                                {% endfor %}
+                            {% endif %}
+                            <br>
+                            {% if email_dict['text_2'] %}
+                                {% for phrase in email_dict['text_2'] %}
+                                    <p style="padding:0; margin:0;">{{phrase}}</p>
+                                {% endfor %}
+                            {% endif %}
+                            <br>
+                            <div class="ticket-details">
+                                <p><strong>Número do Ticket:</strong></p>
+                                <p>{{ticket_details['id']}}</p>
+                                <p><strong>O seu pedido:</strong></p>
+                                <p>{{ticket_details['request']}}</p>
+                                {% if email_dict['email_type'] == 'closed' %}
+                                <p><strong>Resposta do técnico:</strong></p>
+                                <p>{{ticket_details['response']}}</p>
+                                {% endif %}
+                            </div>
+                            <br>
+                            {% if email_dict['link_text'] %}
+                            <p style="padding:0; margin:0;" >{{email_dict['link_text']['text']}}</p>
+                            <a style="padding:0; margin:0;" href="{{email_dict['link_text']['link']}}">{{email_dict['link_text']['link']}}</a>
+                            {% endif %}
+                            <br>
+                            <br>
+                            {% if email_dict['text_3'] %}
+                                {% for phrase in email_dict['text_3'] %}
+                                    <p style="padding:0; margin:0;">{{phrase}}</p>
+                                {% endfor %}
+                            {% endif %}
+                            <br>
+                            {% if email_dict['text_4'] %}
+                                {% for phrase in email_dict['text_4'] %}
+                                    <p style="padding:0; margin:0;">{{phrase}}</p>
+                                {% endfor %}
+                            {% endif %}
+                            <br>
+                        </td>
+                        <!--<td align="left" class="content">
                             <p>Olá, {{requester_info['first_name']}} {{requester_info['last_name']}},</p>
                             <p>Confirmamos que o seu ticket de suporte foi criado com sucesso. Agradecemos o seu contacto!</p>
 
@@ -90,12 +132,11 @@
                             <a href="{{ticket_details['uid']}}">{{ticket_details['uid']}}</a></p>
                             <p>Obrigado pela sua paciência.</p>
                             <p>Com os melhores cumprimentos,<br>A Sua Equipa de Suporte</p>
-                        </td>
+                        </td>-->
                     </tr>
                     <tr>
                         <td align="center" class="footer">
-                            <p>&copy; {{current_year}} O Nome da Sua Empresa. Todos os direitos reservados.</p>
-                            <p>Se tiver alguma dúvida, responda a este email ou visite o nosso site.</p>
+                            <p>&copy; {{current_year}} Grupo AFA.</p>
                         </td>
                     </tr>
                 </table>

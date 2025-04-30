@@ -10,6 +10,25 @@ import aiofiles
 import os
 import uuid
 
+# --- Helper para adicionar ccs na criação do ticket ---
+async def _handle_ticket_creation_ccs(ccs_ids: list[int], new_ticket: Tickets):
+  if not ccs_ids:
+    return
+
+  try:
+    # Obtem os objetos dos colaboradores para os ids inseridos, using the transaction connection
+    ccs_employees_to_add = await get_users_by_ids(ccs_ids)
+
+    # Adiciona os colaboradores obtidos na many-to-many
+    if ccs_employees_to_add:
+      # This operation uses the connection implicitly via the new_ticket object
+      await new_ticket.ccs.add(*ccs_employees_to_add)
+
+  except Exception as e:
+    raise CustomError(500, f"Ocorreu um erro ao adicionar CCS ao ticket {new_ticket.id}", str(e)) from e
+  
+# --- Fim do Helper para adicionar ccs na criação do ticket ---
+
 # --- Helper de Upload de Ficheiros ---
 # --- Configurações para adicionar ficheiros ---
 TICKET_FILES_PATH = os.getenv('TICKET_FILES_PATH')
@@ -184,7 +203,7 @@ def _authorize_ticket_update(ticket: Tickets, current_user: dict):
 def _prepare_update_data(ticket_data: dict) -> tuple[dict, list[int] | None]:
   """Prepara os dados de atualização, removendo campos protegidos e extraindo as FKs."""
   update_data = ticket_data.dict(exclude_unset=True) # Alterações para campos diretos
-  ccs_ids_to_update = update_data.pop('ccs', None)  # Alterações para fk
+  ccs_ids_to_update = update_data.pop('ccs')  # Alterações para fk
   # Se for preciso adicionar fk, é preciso fazer pop e devolver no return para a função mãe 
   # Para poder ser tratado posteriormente
 

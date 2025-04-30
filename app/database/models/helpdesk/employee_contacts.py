@@ -26,11 +26,13 @@ class EmployeeContacts(Model):
     }
   
   async def to_dict(self):
-    contact_type = await self.contact_type
+    contact_type_obj = await self.contact_type
+    contact_type = contact_type_obj.to_dict() if contact_type_obj else None
     return {
       "id": self.id,
-      "contact_type": contact_type.to_dict(),
+      "contact_type": contact_type,
       "contact": self.contact,
       "name": self.name,
       "main_contact": self.main_contact,
     }
+  

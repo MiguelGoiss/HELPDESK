@@ -14,3 +14,9 @@ class TicketSubcategories(Model):
   class Meta:
     table = "ticket_subcategories"
   
+  def to_dict(self):
+    return {
+      "id": self.id,
+      "name": self.name
+    }
+  

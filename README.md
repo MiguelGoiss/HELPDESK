@@ -247,9 +247,124 @@
     - **Headers**:
       - **X-Refresh-Token**: "string"
 
-    
+### Tickets ###
+  #### Create ticket ####
+  - **Description**:
+    Creates a new ticket.
+    This endpoint handles the ticket creation within a database transaction, ensuring atomicity.
+    It automatically logs the creation action, associates any provided CC email addresses, handles optional file uploads, and sends a confirmation email to the requester (and CCs users if applicable).
+    The user creating the ticket is recorded based on the provided authentication token.
+    File uploads should be sent as part of a `multipart/form-data` request, alongside the JSON payload for ticket details.
+  - **API Version**: V1
+  - **Method**: POST
+  - **Endpoint**: `/tickets`
+  - **Headers**:
+    - **Authorization**: "Bearer <access_token>"
+    - **Content-Type**: `multipart/form-data` (Required if sending files) or `application/json` (if no files)
+  - **Request Body**:
+    ```JSON
+    {
+      "request": "string", // Required: Detailed description of the issue/request
+      "requester_id": "integer", // Required: ID of the user requesting support
+      "company_id": "integer", // Required: ID of the company associated with the ticket
+      "category_id": "integer", // Required: ID of the ticket category
+      "priority_id": "integer", // Required: ID of the ticket priority
+      "type_id": "integer", // Required: ID of the ticket type
+      "assistance_type_id": "integer", // Required: ID of the assistance type
+      "agent_id": "integer", // Optional: ID of the agent assigned (if known at creation)
+      "subcategory_id": "integer", // Optional: ID of the ticket subcategory
+      "status_id": "integer", // Optional: Initial status ID (often set automatically)
+      "supplier_reference": "string", // Optional: Reference from a supplier
+      "equipments": "string", // Optional: JSON string containing equipment details
+      "suppliers": "string", // Optional: JSON string containing supplier details
+      "ccs": [ // Optional: List of user IDs to CC on the ticket
+        "integer",
+        ...
+      ]
+    }
+    ```
+  - **Request Body (Files part, in multipart request)**:
+    - `files`: One or more files attached to the request. (Optional)  
 
-### Languages ###
-  The Languages module is built for language manipulations which includes the basics of CRUD, Create, Read, Update e Delete
+  #### Fetch tickets ####
+    - **Description**:
+      Retrieves a paginated list of tickets. This endpoint provides powerful searching, filtering, and ordering capabilities.
+      - **General Search (`search`)**: Performs a case-insensitive search across multiple fields using OR logic. The fields searched by default include: `id`, `uid`, `subject`, `request`, `response`, `internal_comment`, `supplier_reference`, requester's names (`first_name`, `last_name`, `full_name`), agent's names (`first_name`, `last_name`, `full_name`), `company__name`, `category__name`, and `subcategory__name`.
+      - **Specific Filtering (`and_filters`)**: Applies precise filters using AND logic (all conditions must match). Filters are generally case-insensitive for strings.
+        - *Allowed Fields*: `id`, `uid`, `subject`, `request`, `response`, `internal_comment`, `supplier_reference`, `spent_time`, `company_id`, `category_id`, `subcategory_id`, `status_id`, `type_id`, `priority_id`, `assistance_type_id`, `requester_id`, `agent_id`, and related fields like `company__name`, `category__name`, `status__name`, `requester__username`, `agent__email`, etc. (See `ALLOWED_AND_FILTER_FIELDS` in the code for the full list).
+        - *Date Filtering*: For date fields (`prevention_date`, `created_at`, `closed_at`), use suffixes `_after` (inclusive) and `_before` (exclusive) with dates in `YYYY-MM-DD` format. Example: `?and_filters={"created_at_after": "2023-01-01", "created_at_before": "2023-12-31"}`.
+        - *List Filtering*: For fields ending in `_id`, you can provide a list of IDs to match any of them. Example: `?and_filters={"status_id": [1, 2, 5]}`.
+      - **Ordering (`order_by`)**: Sorts the results by a specified field. Prefix the field name with `-` for descending order (`-created_at`).
+        - *Allowed Fields*: `id`, `uid`, `subject`, `created_at`, `closed_at`, various `_id` fields, and related name fields like `company__name`, `status__name`, `requester__full_name`, etc. Default order is `-created_at`.
+      - **Pagination**: Results are paginated. The response includes metadata like `total_items`, `total_pages`, `current_page`, and links (`next_page`, `previous_page`) that preserve the applied filters and sorting.
+      - **Prefetching**: Related data like status, priority, category, requester, agent, and attachments are prefetched for efficiency.
+    - **API Version**: V1
+    - **Method**: GET
+    - **Endpoint**: `/tickets`
+    - **Parameters**:
+      - `page` (integer, optional, default: 1): The page number to retrieve (>= 1).
+      - `page_size` (integer, optional, default: 10): The number of tickets per page (>= 1, <= 100).
+      - `search` (string, optional): General search term applied across default fields (OR logic).
+      - `and_filters` (JSONString, optional): Specific filters applied with AND logic. Pass as a JSON string in query parameters. Example: `?and_filters={"status_id": 5, "requester__full_name": "John Doe"}`
+      - `order_by` (string, optional): Field to sort by (example, `priority_id`, `-created_at`). Defaults to `-created_at`.
+    - **Headers**:
+      - **Authorization**: "Bearer <access_token>"
+  #### Fetch ticket details ####
+    - **Description**:
+      Retrieves the detailed information for a specific ticket identified by its unique identifier (UID).
+      This endpoint fetches the ticket and prefetches related data for efficiency, including: status, priority, category, subcategory, requester, agent, company, CCs, attachments, type, assistance type, and the user who created the ticket.
+      It returns a comprehensive dictionary containing all relevant ticket fields and related object details.
+      If no ticket is found with the provided UID, a 404 Not Found error is returned.
+    - **API Version**: V1
+    - **Method**: GET
+    - **Endpoint**: `/tickets/details/{uid}`
+    - **Path Parameters**:
+      - `uid` (string, required): The unique identifier of the ticket to retrieve.
+    - **Headers**:
+      - **Authorization**: "Bearer <access_token>"
+  #### Update ticket ####
+    - **Description**:
+      Updates the details of an existing ticket identified by its UID.
+      This endpoint allows modification of various ticket fields, managing CCs, and adding new attachments.
+      Updates are performed within a database transaction to ensure atomicity.
+      Key behaviors include:
+        - **Automatic Status Changes**: The ticket status might automatically change (e.g., to 'Assigned') if an `agent_id` is provided for the first time.
+        - **Closing Timestamp**: If the `status_id` is updated to a 'Closed' status, the `closed_at` timestamp is automatically set. If it's changed from 'Closed' to another status, `closed_at` is cleared.
+        - **CCs Management**: The list of CC users can be fully replaced by providing a new list in the `ccs` field.
+        - **File Uploads**: New files can be attached to the ticket using a `multipart/form-data` request.
+        - **Logging**: All changes made to the ticket fields (including CCs and attachments) are logged for auditing purposes.
+        - **Notifications**: Email notifications are sent to the requester if an agent is assigned, or if the status changes to 'Closed' or 'Reopened'.
+      Only the fields intended for modification need to be sent in the request body.
+    - **API Version**: V1
+    - **Method**: PUT
+    - **Endpoint**: `/tickets/{uid}`
+    - **Path Parameters**:
+      - `uid` (string, required): The unique identifier of the ticket to update.
+    - **Headers**:
+      - **Authorization**: "Bearer <access_token>"
+      - **Content-Type**: `multipart/form-data` (Required if sending files) or `application/json` (if no files)
+    - **Request Body (JSON part, typically named 'ticket_data' in multipart request)**:
+      ```JSON
+      {
+        "requester_id": "integer",
+        "category_id": "integer",
+        "type_id": "integer",
+        "subcategory_id": "integer",
+        "assistance_type_id": "integer",
+        "response": "string",
+        "internal_comment": "string",
+        "suppliers": "string",
+        "equipments": "string",
+        "prevention_date": "string",
+        "spent_time": "string",
+        "status_id": "integer",
+        "agent_id": "integer",
+        "supplier_reference": "string",
+        "ccs": ["integer", ...],  
+      }
+      ```
+    - **Request Body (Files part, in multipart request)**:
+      - `files`: One or more new files to attach to the ticket. (Optional)
+
 
 

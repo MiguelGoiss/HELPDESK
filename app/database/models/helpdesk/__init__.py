@@ -18,6 +18,7 @@ from .ticket_supplier_contacts import TicketSupplierContacts
 from .ticket_subcategories import TicketSubcategories
 from .ticket_statuses import TicketStatuses
 from .ticket_priorities import TicketPriorities
+from .ticket_presets import TicketPresets
 from .ticket_logs import TicketLogs
 from .ticket_equipments import TicketEquipments
 from .ticket_categories import TicketCategories
@@ -31,7 +32,8 @@ __tickets__ = [
   "Tickets",
   "TicketLogs",
   "TicketAttachments",
-  "Employees"
+  "Employees",
+  "TicketPresets"
 ]
 
 __all__ = [
@@ -52,6 +54,7 @@ __all__ = [
   "TicketSubcategories",
   "TicketStatuses",
   "TicketPriorities",
+  "TicketPresets",
   "TicketLogs",
   "TicketEquipments",
   "TicketCategories",

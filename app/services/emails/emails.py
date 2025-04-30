@@ -73,17 +73,101 @@ async def recovery_email(request_user: dict):
     )
     
 async def ticket_email(ticket_details: dict, requester_info: dict, agent_info: dict | None = None, ticket_email_type: str = "create"):
-  # Load HTML template
+  # Carrega o template HTML
   template_path = "app/utils/templates/ticket_email.html"
   with open(template_path, "r", encoding="utf-8") as file:
     template_content = file.read()
-  
+
   if ticket_email_type == 'create':
     email_dict = {
-      "title": "Confirmação de Ticket de Suporte"
+      "title": "Confirmação de Ticket de Suporte",
+      "text_1": [
+        "Confirmamos que o seu ticket de suporte foi criado com sucesso. Agradecemos o seu contacto!"
+      ],
+      "text_2": [
+        "A nossa equipa de suporte irá rever o seu pedido e entrará em contacto consigo o mais rapidamente possível."
+      ],
+      "link_text": {
+        "text":"Pode acompanhar o estado do seu ticket através deste link:",
+        "link":f"172.17.1.52:5923/ticket/details/{ticket_details['uid']}"
+      },
+      "text_3": [
+        "Obrigado pela sua paciência"
+      ],
+      "text_4": [
+        "Com os melhores cumprimentos,",
+        "A Equipa de Suporte"
+      ]
+    }
+  elif ticket_email_type == 'assigned':
+    email_dict = {
+      "title": "Ticket de Suporte Atribuído",
+      "text_1": [
+        f"Caro(a) {requester_info['first_name']} {requester_info['last_name']},",
+        f"Informamos que o seu ticket de suporte foi alocado a {agent_info['first_name']} {agent_info['last_name']}!"
+      ],
+      "text_2": [
+        "Se tiver alguma informação adicional, por favor responda para <a style='padding:0; margin:0' href='mailto:suporte@afa.pt'>suporte@afa.pt</a> ou <a style='padding:0; margin:0' href='mailto:suporte@savoysignature.pt'>suporte@savoysignature.pt</a>",
+      ],
+      "link_text": {
+        "text":"Pode acompanhar o estado do seu ticket através deste link:",
+        "link":f"172.17.1.52:5923/ticket/details/{ticket_details['uid']}"
+      },
+      "text_3": [
+        "Obrigado pela sua paciência"
+      ],
+      "text_4": [
+        "Com os melhores cumprimentos,",
+        "A Equipa de Suporte"
+      ]
+    }
+  elif ticket_email_type == 'closed':
+    email_dict = {
+      "title": "Ticket de Suporte Fechado",
+       "text_1": [
+        f"Caro(a) {requester_info['first_name']} {requester_info['last_name']},",
+        f"Informamos que o seu ticket de suporte foi fechado.",
+      ],
+      "text_2": [
+        "Ajude-nos a ajuda-lo!",
+        "Estamos constantemente a tentar melhorar a sua experiência.",
+        "Invista 1 minuto para uma melhor experiência! Preencha o questionário de satisfação <a href='#'>aqui</a>",
+      ],
+      "link_text": {
+        "text":"Se o problema se mantiver pode reabrir e adicionar informação adicional ao ticket através deste link:",
+        "link":f"172.17.1.52:5923/ticket/details/{ticket_details['uid']}"
+      },
+      "text_3": [
+        "Obrigado pela sua paciência"
+      ],
+      "text_4": [
+        "Com os melhores cumprimentos,",
+        "A Equipa de Suporte"
+      ]
+    }
+  elif ticket_email_type == 'reopened':
+    email_dict = {
+      "title": "Ticket de Suporte Re-Aberto",
+      "text_1": [
+        f"Confirmamos que o seu ticket foi reaberto com sucesso. E encontra-se alocado a {agent_info['first_name']} {agent_info['last_name']}"
+      ],
+      "text_2": [
+        "A nossa equipa de suporte irá rever o seu pedido e entrará em contacto consigo o mais rapidamente possível."
+      ],
+      "link_text": {
+        "text":"Pode acompanhar o estado do seu ticket através deste link:",
+        "link":f"172.17.1.52:5923/ticket/details/{ticket_details['uid']}"
+      },
+      "text_3": [
+        "Obrigado pela sua paciência"
+      ],
+      "text_4": [
+        "Com os melhores cumprimentos,",
+        "A Equipa de Suporte"
+      ]
     }
   
-  email_dict['ticket_type'] = ticket_email_type
+  email_dict['email_type'] = ticket_email_type
   
   # Render template with variables
   html_content = Template(template_content).render(
@@ -96,7 +180,8 @@ async def ticket_email(ticket_details: dict, requester_info: dict, agent_info: d
   
   ccs = [cc['email'] for cc in ticket_details['ccs']]
   if agent_info:
-    ccs.append(agent_info['email'])
+    if agent_info['email']:
+      ccs.append(agent_info['email'])
   
   message = MessageSchema(
     subject=ticket_details['subject'],

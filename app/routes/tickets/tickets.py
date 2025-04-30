@@ -28,7 +28,7 @@ async def create_ticket(
 async def read_tickets(
   request: Request,
   page: int = Query(1, ge=1, description="Page number"),
-  page_size: int = Query(10, ge=1, le=100, description="Items per page"),
+  page_size: int = Query(12, ge=1, le=100, description="Items per page"),
   and_filters: str | None = None,
   order_by: str | None = None,
   search: str | None = None,

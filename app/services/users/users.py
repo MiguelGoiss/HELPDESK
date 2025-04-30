@@ -509,7 +509,12 @@ async def delete_user_details(id: int):
 async def user_authentication(authentication_form: dict):
   try:
     # Valida o username inserido se existe em algum colaborador que não esteja desativado nem apagado
-    db_user = await Employees.get_or_none(username=authentication_form.username, deactivated_at=None, deleted_at=None)
+    db_user = Employees.filter(username=authentication_form.username, deactivated_at=None, deleted_at=None).first()
+    db_user = await db_user.prefetch_related(
+      'permissions',
+      'employee_relation',
+      'employee_relation__contact_type'
+    )
     # Verifica a password se corresponde com a recebida pelo cliente
     if not db_user or not db_user.verify_password(authentication_form.password, db_user.password):
       raise CustomError(
@@ -518,7 +523,6 @@ async def user_authentication(authentication_form: dict):
       )
     # Formata os dados do utilizador para dict
     user_info = await db_user.to_dict()
-    print(user_info)
     # Cria o access token com exp de 30 mins
     access_token = await create_token(user_info, 'access')
     # Cria o refresh token com exp de 5 dias

@@ -208,9 +208,9 @@ class BaseUpdateTicket(BaseModel):
           )
         except Exception as e:
           raise HTTPException(status_code=400, detail=f"Error processing ccs: {e}")
-      else:
-        # If the input string was empty or just whitespace, treat as None
-        parsed_ccs = None
+    else:
+      # If the input string was empty or just whitespace, treat as None
+      parsed_ccs = []
 
     return cls(
       requester_id=requester_id,
