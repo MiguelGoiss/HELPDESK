@@ -4,9 +4,10 @@ from tortoise import fields
 class TicketPresets(Model):
   id = fields.IntField(pk=True)
   name = fields.CharField(max_length=20)
-  description = fields.CharField(max_length=255, null=True)
+  filter = fields.CharField(max_length=255, null=True)
   color = fields.CharField(max_length=12)
-  
+  main = fields.BooleanField(default=False)
+
   class Meta:
     table = "ticket_presets"
   
@@ -17,6 +18,6 @@ class TicketPresets(Model):
     return {
       "id": self.id,
       "name": self.name,
-      "description": self.description,
+      "filter": self.filter,
       "color": self.color
     }

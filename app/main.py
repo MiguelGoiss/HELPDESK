@@ -2,6 +2,10 @@ from fastapi import FastAPI
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
+import logging
+from app.utils.logging.config import setup_logging 
+
+setup_logging(log_level=logging.INFO)
 
 # --- Carrega as variaveis do .env ---
 # O load_dotenv é inicializado aqui porque vai ser necessário nos ficheiros abaixo

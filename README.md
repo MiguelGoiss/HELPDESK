@@ -365,6 +365,22 @@
       ```
     - **Request Body (Files part, in multipart request)**:
       - `files`: One or more new files to attach to the ticket. (Optional)
-
-
-
+  #### Ticket presets ####
+    - **Description**:
+      Retrieves a list of all defined ticket presets along with the count of tickets matching each preset's filter criteria.
+      This endpoint allows for optional base filtering (`and_filters`) to be applied *before* applying the specific filters defined within each preset.
+      - **Base Filtering (`and_filters`)**: If provided, these filters (using the same format as the `fetch_tickets` endpoint's `and_filters`) are applied to the initial ticket query. This narrows down the pool of tickets before preset filters are considered.
+      - **Preset Filtering**: For each preset retrieved from the database, if it has a `filter` defined (as a valid JSON string representing filter conditions), these filters are applied to the (potentially pre-filtered) ticket set.
+    - **API Version**: V1
+    - **Method**: GET
+    - **Endpoint**: `/tickets/presets`
+    - **Parameters**:
+      - `and_filters` (JSONString, optional): Specific base filters applied with AND logic before preset filters. Pass as a JSON string in query parameters, similar to the `fetch_tickets` endpoint. Example: `?and_filters={"company_id": 10}`
+    - **Headers**:
+      - **Authorization**: "Bearer <access_token>"
+    - **Response**:
+      ```JSON
+      [
+        { "name": "novos", "filter": "{\"status_id\": 1}", "count": 15 },...
+      ]
+      ```

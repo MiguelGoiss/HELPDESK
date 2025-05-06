@@ -1,6 +1,5 @@
-from functools import reduce
-from operator import or_
-from app.database.models.helpdesk import Tickets, TicketLogs
+from tortoise.expressions import Q
+from app.database.models.helpdesk import Tickets, TicketLogs, TicketPresets
 from app.utils.helpers.tickets import (
   _handle_ticket_creation_ccs,
   _handle_file_uploads,
@@ -14,17 +13,23 @@ from app.utils.helpers.tickets import (
   _handle_ccs_update,
   _handle_update_logging,
   _handle_update_notifications,
+  _apply_and_filters,
+  _apply_or_search,
+  _apply_ordering,
 )
 from app.services.users import get_users_by_ids
 from app.utils.errors.exceptions import CustomError
 from app.utils.helpers.paginate import paginate
 from datetime import datetime, timedelta
 from app.services.logs import LogService
-from tortoise.expressions import Q
 from tortoise.functions import Count
 from tortoise.transactions import in_transaction
 from fastapi import UploadFile
+import json
 import time
+import logging
+
+logger = logging.getLogger(__name__)
 
 # --- Inicio da criação do ticket ---
 async def create_ticket(
@@ -83,13 +88,14 @@ async def create_ticket(
     
     except Exception as e:
       # Se ocorrer algum erro o Tortoise vai dar roll back na transação.
-      print(f"Error during transaction, rollback initiated: {e}")
+      logger.error(f"Error during transaction, rollback initiated: {e}", exc_info=True)
       raise CustomError(500, "Ocorreu um erro durante a criação do ticket ou processamento de anexos", str(e)) from e
 
   # Envia o email de confirmação para o cliente com técnico (se houver) e os utilizadores selecionados como ccs em cc
   try:
     await _handle_ticket_emails(new_ticket_orm, updated_ticket_details, "create")
   except Exception as email_error:
+    logger.error(f"Error sending ticket creation email for ticket {new_ticket_orm.id if new_ticket_orm else 'N/A'}: {email_error}", exc_info=True)
     raise CustomError(
       500,
       "Ocorreu um erro a enviar o email",
@@ -102,117 +108,13 @@ async def create_ticket(
 # --- Fim da criação do ticket ---
 
 # --- Inicio do get de todos os tickets ---
-# --- Configuração: Definição de campos disponíveis para pesquisa e order ---
-
-# Campos que suportam filtros entre datas.
-DATE_FIELDS: set[str] = {
-  'prevention_date',
-  'created_at',
-  'closed_at',
-}
-
-# Campos permitidos para a pesquisa geral 'search' (OR) (É uma lista devido a uma iteração que tem de ser feita no search de or)
-DEFAULT_OR_SEARCH_FIELDS: list[str] = [
-  'id',
-  'uid',
-  'subject',
-  'request',
-  'response',
-  'internal_comment',
-  'supplier_reference',
-  'requester__first_name',
-  'requester__last_name',
-  'requester__full_name',
-  'agent__first_name',
-  'agent__last_name',
-  'agent__full_name',
-  'company__name',
-  'category__name',
-  'subcategory__name',
-]
-
-# Campos permitidos para a pesquisa específica (AND)
-ALLOWED_AND_FILTER_FIELDS: set[str] = {
-  # Campos diretos
-  'id',
-  'uid',
-  'subject',
-  'request',
-  'response',
-  'internal_comment',
-  'supplier_reference',
-  'spent_time',
-  'prevention_date',
-  'created_at',
-  'closed_at',
-  # Foreign Key IDs
-  'company_id',
-  'category_id',
-  'subcategory_id',
-  'status_id',
-  'type_id',
-  'priority_id',
-  'assistance_type_id',
-  'requester_id',
-  'agent_id',
-  # Atributos relacionados
-  'company__name',
-  'category__name',
-  'subcategory__name',
-  'status__name',
-  'type__name',
-  'priority__name',
-  'assistance_type__name',
-  'requester__username',
-  'requester__email',
-  'requester__first_name',
-  'requester__last_name',
-  'requester__full_name',
-  'requester__department__name',
-  'requester__department__id'
-  'agent__username',
-  'agent__email',
-  'agent__first_name',
-  'agent__last_name',
-  'agent__full_name',
-}
-
-# Campos permitidos para order
-ALLOWED_ORDER_FIELDS: set[str] = {
-  # Campos diretos
-  'id',
-  'uid',
-  'subject',
-  # Datas
-  'created_at',
-  'closed_at',
-  # Foreign Key IDs
-  'company_id',
-  'category_id',
-  'subcategory_id',
-  'status_id',
-  'type_id',
-  'priority_id',
-  'assistance_type_id',
-  'requester_id',
-  'agent_id',
-  # Atributos relacionados
-  'company__name',
-  'category__name',
-  'subcategory__name',
-  'status__name',
-  'type__name',
-  'priority__name',
-  'assistance_type__name',
-  'requester__full_name',
-  'agent__full_name',
-}
-# --- Fim da Configuração ---
 
 async def fetch_tickets(
   path: str,
   page_size: int,
   page: int,
+  current_user: dict,
+  own: bool,
   original_query_params: dict | None = None,
   # O parametro search serve para pesquisa geral (OR)
   search: str | None = None,
@@ -223,84 +125,21 @@ async def fetch_tickets(
   ) -> dict:
   start = time.time()
   queryset = Tickets.all()
+
+  if own:
+    queryset = queryset.filter(Q(requester_id=current_user['id']) | Q(agent_id=current_user['id']))
+
   # Filtros para o search (AND)
   if and_filters:
-    valid_and_filters = {}
-    for field, value in and_filters.items():
-      # --- Filtro de datas ---
-      # Para a pesquisa de datas os campos devem vir e.g. "prevention_date_after" para a data de inicio e "prevention_date_before" para a data de fim
-      if field.endswith('_after'):
-        base_field = field[:-6] # Remove o '_after'
-        if base_field in DATE_FIELDS:
-          try:
-            start_date = datetime.fromisoformat(str(value)).date()
-            filter_key = f"{base_field}__gte"
-            valid_and_filters[filter_key] = datetime.combine(start_date, datetime.min.time())
-            continue
-          except ValueError:
-            raise CustomError(400, "Formato de data inválido", f"Formato inválido para '{field}'. Usar YYYY-MM-DD.")
-        else:
-          raise CustomError(400, "Filtro inválido", f"Não é possível filtrar por data no campo '{base_field}'.")
-
-      elif field.endswith('_before'):
-        base_field = field[:-7] # Remove o '_before'
-        if base_field in DATE_FIELDS:
-          try:
-            end_date = datetime.fromisoformat(str(value)).date()
-            next_day_start = datetime.combine(end_date + timedelta(days=1), datetime.min.time())
-            filter_key = f"{base_field}__lt"
-            valid_and_filters[filter_key] = next_day_start
-            continue
-          except ValueError:
-            raise CustomError(400, "Formato de data inválido", f"Formato inválido para '{field}'. Usar YYYY-MM-DD.")
-        else:
-          raise CustomError(400, "Filtro inválido", f"Não é possível filtrar por data no campo '{base_field}'.")
-      
-      # --- Filtro de campos que não são datas ---
-      if field in ALLOWED_AND_FILTER_FIELDS:
-        if isinstance(value, str) and not field.endswith('_id'):
-          filter_key = f"{field}__icontains"
-          valid_and_filters[filter_key] = value
-        elif isinstance(value, list):
-          filter_key = f"{field}__in"
-          valid_and_filters[filter_key] = value
-        else:
-          valid_and_filters[field] = value
-      else:
-        raise CustomError(400, "Filtro inválido", f"Não é possível filtrar pelo campo '{field}'.")
-
-    if valid_and_filters:
-      queryset = queryset.filter(**valid_and_filters)
+    queryset = await _apply_and_filters(queryset, and_filters)
 
   # Aplica search geral (OR)
-  if search:
-    search_conditions = []
-    for field in DEFAULT_OR_SEARCH_FIELDS:
-      if field == 'id' and search.isdigit():
-        search_conditions.append(Q(id=int(search)))
-      else:
-        filter_key = f"{field}__icontains"
-        search_conditions.append(Q(**{filter_key: search}))
-
-    if search_conditions:
-      # Combina todas as condições (OR)
-      combined_condition = reduce(or_, search_conditions)
-      queryset = queryset.filter(combined_condition)
-    else:
-      queryset = queryset.none()
+  queryset = _apply_or_search(queryset, search)
 
   # Aplica o order
-  if order_by:
-    order_field_name = order_by.lstrip('-') # Retira o '-' se houver
-    if order_field_name in ALLOWED_ORDER_FIELDS:
-      queryset = queryset.order_by(order_by)
-    else:
-      raise CustomError(400, "Ordenação inválida", f"Ordenação pelo campo '{order_field_name}' não é permitida.")
-  else:
-    # Por defeito o order é pela data de criação
-    queryset = queryset.order_by('-created_at')
+  queryset = _apply_ordering(queryset, order_by)
 
-  # Annotate with the count of attachments instead of fetching all attachment objects
+  # Annotate com count para obter a contagem dos attachments em vez dos attachments
   queryset = queryset.annotate(attachments_count=Count("attachments"))
   
   queryset = queryset.prefetch_related(
@@ -330,10 +169,11 @@ async def fetch_tickets(
       original_query_params=original_query_params,
     )
   except Exception as e:
+    logger.error(f"Error during ticket pagination: {e}", exc_info=True)
     raise CustomError(500, "Erro ao processar a lista de tickets.", str(e)) from e
 
   end = time.time()
-  print(f"fetch_tickets execution time: {end-start:.4f}s")
+  logger.info(f"fetch_tickets execution time: {end-start:.4f}s")
   return paginated_result
 
 # --- Fim do get de todos os tickets ---
@@ -359,6 +199,7 @@ async def fetch_ticket_details(uid: str) -> dict:
 
     # Check if the ticket was found
     if not ticket:
+      logger.warning(f"Ticket not found with UID: {uid}")
       raise CustomError(404, "Ticket não encontrado", f"Nenhum ticket encontrado com o UID: {uid}")
 
     # Serialize the ticket details using the specified method
@@ -431,12 +272,15 @@ async def update_ticket_details(
       raise e
     
     except Exception as e:
-      print(f"Error during ticket update transaction for UID {uid}, rollback initiated: {e}")
+      logger.error(f"Error during ticket update transaction for UID {uid}, rollback initiated: {e}", exc_info=True)
       raise CustomError(500, "Ocorreu um erro ao atualizar o ticket", str(e)) from e
   
   # ---  Notifica o requerente ---
   # Envia email após todas as alterações.
-  await _handle_update_notifications(ticket, assigned)
+  try:
+    await _handle_update_notifications(ticket, assigned)
+  except Exception as email_error:
+    logger.error(f"Error sending update notification for ticket UID {uid}: {email_error}", exc_info=True)
 
   try:
     updated_ticket_details = await fetch_ticket_details(uid)
@@ -450,6 +294,75 @@ async def update_ticket_details(
 
 # --- Fim da atualização de um ticket ---
 
+# --- Inicio dos counts dos presets ---
+
+async def fetch_preset_counts(search: str | None = None, and_filters: dict[str, any] | None = None, own: bool | None = False, current_user: dict | None = None) -> list[dict]:
+  """
+  Calcula a contagem de tickets para cada preset definido,
+  opcionalmente aplicando filtros base adicionais.
+
+  Args:
+    and_filters: Um dicionário opcional de filtros a serem aplicados
+                 antes dos filtros específicos de cada preset.
+
+  Returns:
+    Uma lista de dicionários, cada um contendo 'name' (nome do preset)
+    e 'count' (contagem de tickets correspondente).
+
+  Raises:
+    CustomError: Se houver um erro ao aplicar os filtros base.
+  """
+  presets = await TicketPresets.filter(main=True).all()
+  results = []
+
+  # Cria um queryset base
+  base_queryset = Tickets.all()
+
+  if own:
+    # if not current_user or 'id' not in current_user:
+    #   raise CustomError(400, "Utilizador inválido", "Não é possível filtrar por 'own' sem um utilizador válido.")
+    base_queryset = base_queryset.filter(Q(requester_id=current_user['id']) | Q(agent_id=current_user['id']))
+
+  # Aplica filtros base se fornecidos
+  if and_filters:
+    try:
+      base_queryset = await _apply_and_filters(base_queryset, and_filters)
+    except CustomError as e:
+      logger.error(f"Error applying base filters in fetch_preset_counts: {e}", exc_info=True)
+      raise e 
+
+  # Aplica search geral (OR)
+  base_queryset = _apply_or_search(base_queryset, search)
+
+  for preset in presets:
+    preset_queryset = base_queryset # Começa com o queryset base (já filtrado se and_filters foi passado)
+    if preset.filter:
+      try:
+        preset_filter_dict = json.loads(preset.filter)
+        if isinstance(preset_filter_dict, dict):
+          # Aplica os filtros específicos do preset sobre o queryset base
+          preset_queryset = await _apply_and_filters(preset_queryset, preset_filter_dict)
+        else:
+          logger.warning(f"Preset '{preset.name}' (ID: {preset.id}) filter is not a valid JSON object. Skipping preset filters.")
+      except json.JSONDecodeError:
+        logger.warning(f"Warning: Could not parse filter for preset '{preset.name}' (ID: {preset.id}). Skipping preset filters.")
+      except CustomError as e:
+        # Erro ao aplicar filtros do *preset* (e.g., campo inválido no preset)
+        logger.warning(f"Warning: Invalid filter found in preset '{preset.name}' (ID: {preset.id}): {e}. Skipping preset filters.")
+      except Exception as e:
+        logger.warning(f"Unexpected error applying filter for preset '{preset.name}' (ID: {preset.id}): {e}. Skipping preset filters.", exc_info=True)
+    # Conta os tickets após aplicar os filtros do preset (ou apenas os filtros base se o preset não tiver filtro ou for inválido)
+    try:
+      count = await preset_queryset.count()
+      results.append({"id": preset.id, "name": preset.name, "filter":preset.filter, "color":preset.color, "count": count})
+    except Exception as e:
+      # Log error during the count operation for a specific preset
+      logger.error(f"Error counting tickets for preset '{preset.name}' (ID: {preset.id}): {e}", exc_info=True)
+      # Append a result indicating an error or skip this preset
+      results.append({"id": preset.id, "name": preset.name, "filter":json.loads(preset.filter), "color":preset.color, "count": "Error"}) # Or handle as needed
+
+  return results
+
+# --- Fim dos counts dos presets ---
 
     
-

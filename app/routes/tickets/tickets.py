@@ -7,6 +7,7 @@ from app.controllers.tickets import (
   handle_fetch_tickets,
   handle_fetch_ticket_details,
   handle_update_ticket,
+  handle_preset_counts,
 )
 
 router = APIRouter(prefix="/tickets", tags=["Tickets"])
@@ -28,11 +29,12 @@ async def create_ticket(
 async def read_tickets(
   request: Request,
   page: int = Query(1, ge=1, description="Page number"),
-  page_size: int = Query(12, ge=1, le=100, description="Items per page"),
+  page_size: int = Query(100, ge=1, le=100, description="Items per page"),
+  current_user: dict = Depends(validate_access_token),
+  own: bool | None = False,
+  search: str | None = None,
   and_filters: str | None = None,
   order_by: str | None = None,
-  search: str | None = None,
-  _: dict = Depends(validate_access_token)
 ):
   query_params = dict(request.query_params)
   tickets_data = await handle_fetch_tickets(
@@ -40,6 +42,8 @@ async def read_tickets(
     page,
     page_size,
     query_params,
+    current_user,
+    own,
     search,
     and_filters,
     order_by,
@@ -67,4 +71,14 @@ async def update_ticket(
     files
   )
   return updated_ticket
+
+@router.get("/presets", dependencies=[Depends(require_permission("tecnico"))])
+async def get_ticket_presets_count(
+  current_user: dict = Depends(validate_access_token),
+  own: bool | None = False,
+  and_filters: str | None = None,
+  search: str | None = None,
+):
+  ticket_presets = await handle_preset_counts(current_user, search, and_filters, own)
+  return ticket_presets
 

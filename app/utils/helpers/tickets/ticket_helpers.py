@@ -2,13 +2,18 @@ from app.database.models.helpdesk import Tickets, TicketLogs, TicketAttachments,
 from app.services.users import get_users_by_ids, get_employee_basic_info
 from app.services.emails.emails import ticket_email
 from app.utils.errors.exceptions import CustomError
-from datetime import datetime
+from tortoise.expressions import Q
+from tortoise.queryset import QuerySet
+from datetime import datetime, timedelta
 from app.services.logs import LogService
 from fastapi import UploadFile
 from pathlib import Path
+from functools import reduce
+from operator import or_
 import aiofiles
 import os
 import uuid
+import json
 
 # --- Helper para adicionar ccs na criação do ticket ---
 async def _handle_ticket_creation_ccs(ccs_ids: list[int], new_ticket: Tickets):
@@ -347,3 +352,212 @@ async def _handle_ticket_emails(ticket: Tickets, ticket_info: dict, email_type: 
       "Ocorreu um erro a enviar o email",
       str(e)
     ) from e
+
+# --- Helpers para o fetch dos tickets ---
+
+# --- Configuração de possíveis campos para pesquisa ---
+# Campos suportados nos filtros de datas.
+DATE_FIELDS: set[str] = {
+  'prevention_date',
+  'created_at',
+  'closed_at',
+}
+
+# Campos suportados na pesquisa específica (AND)
+ALLOWED_AND_FILTER_FIELDS: set[str] = {
+  # Campos diretos
+  'id',
+  'uid',
+  'subject',
+  'request',
+  'response',
+  'internal_comment',
+  'supplier_reference',
+  'spent_time',
+  'prevention_date',
+  'created_at',
+  'closed_at',
+  # Foreign Key IDs
+  'company_id',
+  'category_id',
+  'subcategory_id',
+  'status_id',
+  'type_id',
+  'priority_id',
+  'assistance_type_id',
+  'requester_id',
+  'agent_id',
+  # Atributos relacionados
+  'company__name',
+  'category__name',
+  'subcategory__name',
+  'status__name',
+  'type__name',
+  'priority__name',
+  'assistance_type__name',
+  'requester__username',
+  'requester__email',
+  'requester__first_name',
+  'requester__last_name',
+  'requester__full_name',
+  'requester__department__name',
+  'requester__department__id'
+  'agent__username',
+  'agent__email',
+  'agent__first_name',
+  'agent__last_name',
+  'agent__full_name',
+}
+
+# Campos permitidos para a pesquisa geral 'search' (OR) (É uma lista devido a uma iteração que tem de ser feita no search de or)
+DEFAULT_OR_SEARCH_FIELDS: list[str] = [
+  'id',
+  'subject',
+  'request',
+  'response',
+  'internal_comment',
+  'supplier_reference',
+  'requester__first_name',
+  'requester__last_name',
+  'requester__full_name',
+  'agent__first_name',
+  'agent__last_name',
+  'agent__full_name',
+  'company__name',
+  'category__name',
+  'subcategory__name',
+]
+
+# Campos permitidos para order
+ALLOWED_ORDER_FIELDS: set[str] = {
+  # Campos diretos
+  'id',
+  'uid',
+  'subject',
+  # Datas
+  'created_at',
+  'closed_at',
+  # Foreign Key IDs
+  'company_id',
+  'category_id',
+  'subcategory_id',
+  'status_id',
+  'type_id',
+  'priority_id',
+  'assistance_type_id',
+  'requester_id',
+  'agent_id',
+  # Atributos relacionados
+  'company__name',
+  'category__name',
+  'subcategory__name',
+  'status__name',
+  'type__name',
+  'priority__name',
+  'assistance_type__name',
+  'requester__full_name',
+  'agent__full_name',
+}
+# --- Fim da configuração ---
+
+async def _apply_and_filters(queryset: QuerySet, filters_dict: dict[str, any]) -> QuerySet:
+  """
+  Aplica filtros AND a um queryset de Tickets, validando os campos e tratando tipos de dados.
+
+  Args:
+    queryset: O queryset do Tortoise ao qual aplicar os filtros.
+    filters_dict: Um dicionário onde as chaves são nomes de campos (ou campos com sufixos _after/_before)
+                  e os valores são os valores a filtrar.
+
+  Returns:
+    O queryset com os filtros aplicados.
+
+  Raises:
+    CustomError: Se um campo de filtro for inválido ou um formato de data for inválido.
+  """
+  valid_filters = {}
+
+  if isinstance(filters_dict, str):
+    filters_dict = json.loads(filters_dict)
+
+  for field, value in filters_dict.items():
+    # --- Filtro de datas ---
+    if field.endswith('_after'):
+      base_field = field[:-6] # Remove o '_after'
+      if base_field in DATE_FIELDS:
+        try:
+          start_date = datetime.fromisoformat(str(value)).date()
+          filter_key = f"{base_field}__gte"
+          valid_filters[filter_key] = datetime.combine(start_date, datetime.min.time())
+        except ValueError:
+          raise CustomError(400, "Formato de data inválido", f"Formato inválido para '{field}'. Usar YYYY-MM-DD.")
+      else:
+        raise CustomError(400, "Filtro inválido", f"Não é possível filtrar por data no campo '{base_field}'.")
+    elif field.endswith('_before'):
+      base_field = field[:-7] # Remove o '_before'
+      if base_field in DATE_FIELDS:
+        try:
+          end_date = datetime.fromisoformat(str(value)).date()
+          next_day_start = datetime.combine(end_date + timedelta(days=1), datetime.min.time())
+          filter_key = f"{base_field}__lt"
+          valid_filters[filter_key] = next_day_start
+        except ValueError:
+          raise CustomError(400, "Formato de data inválido", f"Formato inválido para '{field}'. Usar YYYY-MM-DD.")
+      else:
+        raise CustomError(400, "Filtro inválido", f"Não é possível filtrar por data no campo '{base_field}'.")
+    # --- Filtro de campos que não são datas ---
+    elif field in ALLOWED_AND_FILTER_FIELDS:
+      if isinstance(value, str) and not field.endswith('_id'):
+        filter_key = f"{field}__icontains"
+        valid_filters[filter_key] = value
+      elif isinstance(value, list):
+        filter_key = f"{field}__in"
+        valid_filters[filter_key] = value
+      else:
+        valid_filters[field] = value
+    else:
+      raise CustomError(400, "Filtro inválido", f"Não é possível filtrar pelo campo '{field}'.")
+
+  if valid_filters:
+    return queryset.filter(**valid_filters)
+  return queryset
+
+def _apply_or_search(queryset: QuerySet, search: str | None) -> QuerySet:
+  """Applies OR search conditions across predefined fields."""
+  if not search:
+    return queryset
+
+  search_conditions = []
+  for field in DEFAULT_OR_SEARCH_FIELDS:
+    if field == 'id' and search.isdigit():
+      search_conditions.append(Q(id=int(search)))
+    else:
+      # Ensure the field is valid for icontains if it's not 'id'
+      # (Tortoise might handle this, but explicit checks can be safer)
+      filter_key = f"{field}__icontains"
+      search_conditions.append(Q(**{filter_key: search}))
+
+  if search_conditions:
+    # Combina todas as condições (OR)
+    combined_condition = reduce(or_, search_conditions)
+    queryset = queryset.filter(combined_condition)
+  else:
+    # Should not happen if search is not None and DEFAULT_OR_SEARCH_FIELDS is not empty,
+    # but good practice to handle. Could also return queryset.none() if no match is desired.
+    pass # Or: queryset = queryset.none() if no conditions generated means no results
+  return queryset
+
+def _apply_ordering(queryset: QuerySet, order_by: str | None) -> QuerySet:
+  """Applies ordering to the queryset, validating the field and using a default."""
+  if order_by:
+    order_field_name = order_by.lstrip('-') # Retira o '-' se houver
+    if order_field_name in ALLOWED_ORDER_FIELDS:
+      queryset = queryset.order_by(order_by)
+    else:
+      raise CustomError(400, "Ordenação inválida", f"Ordenação pelo campo '{order_field_name}' não é permitida.")
+  else:
+    # Por defeito o order é pela data de criação
+    queryset = queryset.order_by('-created_at')
+  return queryset
+
+# --- Fim dos helpers do fetch dos tickets ---

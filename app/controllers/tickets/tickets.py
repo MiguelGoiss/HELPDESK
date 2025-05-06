@@ -5,6 +5,7 @@ from app.services.tickets import (
   fetch_tickets,
   fetch_ticket_details,
   update_ticket_details,
+  fetch_preset_counts,
 )
 from app.utils.errors.exceptions import CustomError
 from app.schemas.tickets import BaseCreateTicket
@@ -39,9 +40,11 @@ async def handle_fetch_tickets(
   page: int,
   page_size: int,
   original_query_params: dict,
+  current_user: dict,
+  own: bool,
   search: str | None = None,
   and_filters: str | None = None,
-  order_by: str | None = None
+  order_by: str | None = None,
 ):
   try:
     logger.info(f"Handling fetch tickets request. Page: {page}, Page Size: {page_size}, Search: '{search}', Order By: '{order_by}'")
@@ -65,7 +68,9 @@ async def handle_fetch_tickets(
       original_query_params=original_query_params,
       search=search,
       and_filters=parsed_and_filters,
-      order_by=order_by
+      order_by=order_by,
+      current_user=current_user,
+      own=own,
     )
     logger.info(f"Successfully fetched tickets. Page: {page}, Count: {len(tickets_result.get('items', []))}")
     return tickets_result
@@ -110,3 +115,13 @@ async def handle_update_ticket(
   except Exception as e:
     raise e
     
+async def handle_preset_counts(
+  current_user: dict,
+  search: str | None = None,
+  and_filters: str | None = None,
+  own: bool | None = False,
+):
+  presets_count = await fetch_preset_counts(search, and_filters, own, current_user)
+  return presets_count
+
+
