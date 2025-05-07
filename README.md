@@ -384,3 +384,77 @@
         { "name": "novos", "filter": "{\"status_id\": 1}", "count": 15 },...
       ]
       ```
+### Ticket Categories ###
+  #### Create ticket category ####
+  - **Description**:
+    Creates a new ticket category.
+    This endpoint allows the creation of a new ticket category with a unique name.
+    It validates that the provided name is unique within the system.
+    Upon successful creation, it returns the details of the newly created category.
+  - **API Version**: V1
+  - **Method**: POST
+  - **Endpoint**: `/ticket-categories`
+  - **Headers**:
+    - **Authorization**: "Bearer <access_token>"
+  - **Request**:
+    ```JSON
+    {
+      "name": "string", // Required, must be unique
+      "description": "string", // Optional
+      "companies": [ // Optional: List of company IDs to associate with this category
+        "integer", // company_id
+        ...
+      ]
+    }
+    ```
+  #### Fetch ticket categories ####
+    - **Description**:
+      Retrieves a list of all ticket categories.
+    - **API Version**: V1
+    - **Method**: GET
+    - **Endpoint**: `/ticket-categories`
+  #### Fetch ticket category details ####
+    - **Description**:
+      Retrieves the details of a specific ticket category identified by its ID.
+    - **API Version**: V1
+    - **Method**: GET
+    - **Endpoint**: `/ticket-categories/{id}`
+    - **Parameters**:
+      - `id` (integer, required): The ID of the ticket category to retrieve.
+    - **Headers**:
+      - **Authorization**: "Bearer <access_token>"
+  #### Update ticket category ####
+    - **Description**:
+      Updates the details of an existing ticket category identified by its ID.
+    - **API Version**: V1
+    - **Method**: PUT
+    - **Endpoint**: `/ticket-categories/{id}`
+    - **Parameters**:
+      - `id` (integer, required): The ID of the ticket category to update.
+    - **Headers**:
+      - **Authorization**: "Bearer <access_token>"
+    - **Request**:
+      ```JSON
+      {
+        "name": "string", // Optional
+        "description": "string", // Optional
+        "active": true, // Optional
+        "companies": [ // Optional: List of company IDs to associate. This will replace existing associations.
+          "integer", // company_id
+          ...
+        ]
+      }
+      ```
+  #### Delete ticket category ####
+    - **Description**:
+      Deletes a ticket category identified by its ID.
+    - **API Version**: V1
+    - **Method**: DELETE
+    - **Endpoint**: `/ticket-categories/{id}`
+    - **Parameters**:
+      - `id` (integer, required): The ID of the ticket category to soft delete.
+    - **Headers**:
+      - **Authorization**: "Bearer <access_token>"
+      
+    
+    

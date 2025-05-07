@@ -77,8 +77,8 @@ async def password_recovery(recovery_form: RecoveryForm):
   return await handle_password_recovery(recovery_form)
   
 @router.get("/permission/{permission_id}")
-async def get_employees_with_permission(permission_id: int):
-  return await handle_get_employees_with_permission(permission_id)
+async def get_employees_with_permission(permission_id: int, search: str | None = None):
+  return await handle_get_employees_with_permission(permission_id, search)
 
 @router.get("/refresh-token")
 async def refresh_token(user_info: dict = Depends(validate_refresh_token)):

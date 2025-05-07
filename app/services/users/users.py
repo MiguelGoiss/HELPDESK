@@ -689,15 +689,38 @@ async def update_user_password(recovery_form: dict):
       str(e)
     )
 
-async def get_employees_with_permission(permission_id: int):
+async def get_employees_with_permission(permission_id: int, search: str | None = None):
   try:
     # Filtra os colaboradores que têm a permissão recebida
-    employees_with_permission = await Employees.filter(
+    queryset = Employees.filter(
       permissions__id=permission_id,
       deactivated_at__isnull=True,
       deleted_at__isnull=True
-    ).all()
+    )
 
+    if search:
+      search_conditions = [
+        Q(first_name__icontains=search),
+        Q(last_name__icontains=search),
+        Q(full_name__icontains=search),
+        Q(local__name__icontains=search),
+        Q(department__name__icontains=search),
+        Q(employee_relation__contact__icontains=search)
+      ]
+      combined_condition = reduce(or_, search_conditions)
+      queryset = queryset.filter(combined_condition)
+
+    # Prefetch related fields for efficiency and for to_dict_contacts()
+    # Ensure all fields needed by to_dict_contacts are included.
+    # 'local' and 'department' are added for the search functionality.
+    employees_with_permission = await queryset.prefetch_related(
+        'local', 
+        'department',
+        'employee_relation',
+        'employee_relation__contact_type'
+    ).distinct().all() 
+    # .distinct() is added because joining with employee_relation for search might cause duplicates
+    # if an employee has multiple contacts matching the search term.
     return [await employee.to_dict_contacts() for employee in employees_with_permission]
 
   except Exception as e:

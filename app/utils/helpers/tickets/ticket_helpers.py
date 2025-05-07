@@ -180,7 +180,6 @@ async def _handle_file_uploads(ticket: Tickets, files: list[UploadFile], current
     print(str(e))
     raise CustomError(500, "Erro inesperado no processamento de ficheiros", str(e)) from e
 
-
 # --- Helpers para update de tickets ---
 
 async def _get_ticket_for_update(uid: str) -> Tickets:

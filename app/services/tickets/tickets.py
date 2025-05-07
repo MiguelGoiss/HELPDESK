@@ -17,10 +17,9 @@ from app.utils.helpers.tickets import (
   _apply_or_search,
   _apply_ordering,
 )
-from app.services.users import get_users_by_ids
 from app.utils.errors.exceptions import CustomError
 from app.utils.helpers.paginate import paginate
-from datetime import datetime, timedelta
+from datetime import datetime
 from app.services.logs import LogService
 from tortoise.functions import Count
 from tortoise.transactions import in_transaction

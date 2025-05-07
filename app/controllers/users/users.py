@@ -107,9 +107,9 @@ async def handle_password_recovery(recovery_form: dict):
   except Exception as e:
     raise e
 
-async def handle_get_employees_with_permission(permission_id: int):
+async def handle_get_employees_with_permission(permission_id: int, search: str | None = None):
   try:
-    return await get_employees_with_permission(permission_id)
+    return await get_employees_with_permission(permission_id, search)
   except Exception as e:
     raise e
 

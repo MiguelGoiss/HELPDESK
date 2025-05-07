@@ -1,0 +1,206 @@
+import logging
+from app.database.models.helpdesk import TicketCategories, TicketSubcategories, Companies
+from app.utils.errors.exceptions import CustomError
+from app.utils.helpers.tickets.categories.ticket_categories import _validate_category_name
+
+logger = logging.getLogger(__name__)
+
+async def create_ticket_category(category_data: dict) -> TicketCategories:
+  """
+  Cria uma nova categoria de tickets.
+
+  Args:
+    category_data (dict): Um dicionário que contém os dados da nova categoria.
+                          Parâmetros esperados: 'name', 'description' (Opcional),
+                          'companies' (Opcional: lista de ids de empresas).
+
+  Returns:
+    Um dicionário com os dados da nova categoria.
+
+  Raises:
+    CustomError: Se uma categoria com o mesmo nome já existir
+                 ou se ocorrerem erros na base de dados.
+  """
+  try:
+    category_name = category_data.get('name')
+    await _validate_category_name(category_name)
+
+    company_ids = category_data.pop('companies', None)
+    
+    new_category = await TicketCategories.create(**category_data)
+
+    if company_ids:
+      companies_to_add = await Companies.filter(id__in=company_ids, active=True).all()
+      await new_category.companies.add(*companies_to_add)
+    return new_category
+
+  except CustomError as e:
+    raise e
+    
+  except Exception as e:
+    logger.error(f"Unexpected error creating ticket category with data {category_data}: {e}", exc_info=True)
+    raise CustomError(
+      500,
+      "Ocorreu um erro ao criar a categoria de tickets.",
+      str(e)
+    ) from e
+  
+async def fetch_ticket_categories() -> list[TicketCategories]:  
+  """
+  Obtém todas as categorias de tickets ativas.
+
+  Returns:
+    Uma lista de dicionários, com categorias.
+
+  Raises:
+    CustomError: Se ocorrer algum erro durante a busca dos dados.
+  """
+  try:
+    categories = await TicketCategories.filter(active=True).order_by('name').all()
+    return categories
+
+  except CustomError as e:
+    raise e
+    
+  except Exception as e:
+    logger.error(f"Unexpected error fetching ticket categories: {e}", exc_info=True)
+    raise CustomError(
+      500,
+      "Ocorreu um erro ao obter as categorias de tickets.",
+      str(e)
+    ) from e
+
+async def fetch_ticket_category_by_id(category_id: int) -> TicketCategories:
+  """
+  Obtém uma categoria de ticket pelo seu id.
+
+  Args:
+    category_id: O id da categoria de ticket a ser obtida.
+
+  Returns:
+    Um dicionário representando a categoria de ticket, incluindo suas empresas e subcategorias ativas.
+
+  Raises:
+    CustomError: Se a categoria não for encontrada ou se ocorrer algum erro durante a busca.
+  """
+  try:
+    category_orm = await TicketCategories.filter(id=category_id, active=True).prefetch_related('companies', 'category_subcategories').first()
+    if not category_orm:
+      raise CustomError(404, "Categoria de ticket não encontrada", f"Nenhuma categoria encontrada com o ID: {category_id}")
+    return await category_orm.to_dict()
+
+  except CustomError as e:
+    raise e
+    
+  except Exception as e:
+    logger.error(f"Unexpected error fetching ticket category with ID {category_id}: {e}", exc_info=True)
+    raise CustomError(
+      500,
+      "Ocorreu um erro ao buscar a categoria de ticket.",
+      str(e)
+    ) from e
+
+async def update_ticket_category(category_id: int, category_data: dict) -> TicketCategories:
+  """
+  Atualiza os dados de uma categoria de ticket existente pelo id. 
+  Também pode criar novas subcategorias associadas a esta categoria.
+
+  Args:
+    category_id: O id da categoria a ser atualizada.
+    category_data: Um dicionário com os dados a serem atualizados.
+                   Parâmetros esperados: 'name', 'description' (opcional),
+                   'companies' (Opcional: lista de ids de empresas para substituir as existentes),
+                   'subcategories_to_create' (Opcional: lista de nomes de subcategorias a serem criadas).
+
+  Returns:
+    A instância da categoria de ticket atualizada.
+
+  Raises:
+    CustomError: Se a categoria não for encontrada,
+                 se uma categoria com o novo nome já existir,
+                 se houver um erro ao criar uma subcategoria (ex: nome duplicado),
+                 ou se ocorrer algum erro durante a atualização.
+  """
+  try:
+    category_to_update = await TicketCategories.get_or_none(id=category_id, active=True)
+    if not category_to_update:
+      raise CustomError(404, "Categoria de ticket não encontrada", f"Nenhuma categoria encontrada com o id: {category_id}")
+
+    # Valida o novo nome da categoria se for fornecido e diferente do atual
+    new_name = category_data.get('name')
+    if new_name and new_name != category_to_update.name:
+      await _validate_category_name(new_name, category_id)
+
+    company_ids = category_data.pop('companies', None)
+    subcategories = category_data.pop('subcategories', None)
+
+    # Atualiza os campos da categoria com os novos dados
+    for key, value in category_data.items():
+      setattr(category_to_update, key, value)
+    await category_to_update.save()
+
+    # Atualiza as empresas associadas, se fornecido
+    if company_ids is not None: # "is not None" para permitir enviar uma lista vazia para remover todas as empresas
+      await category_to_update.companies.clear() # Remove todas as associações existentes
+      if company_ids: # Se a lista não estiver vazia, adiciona as novas
+        companies_to_add = await Companies.filter(id__in=company_ids, active=True).all()
+        if companies_to_add:
+          await category_to_update.companies.add(*companies_to_add)
+
+    # Cria novas subcategorias, se fornecido
+    if subcategories:
+      for sub_name in subcategories:
+        if not isinstance(sub_name, str) or not sub_name.strip():
+          logger.warning(f"Nome de subcategoria inválido fornecido: '{sub_name}'. Ignorando.")
+          continue
+        try:
+          await TicketSubcategories.create(name=sub_name.strip(), category=category_to_update)
+          logger.info(f"Subcategoria '{sub_name.strip()}' criada para a categoria ID {category_id}")
+        except Exception as sub_exc:
+          logger.error(f"Falha ao criar subcategoria '{sub_name.strip()}' para a categoria ID {category_id}: {sub_exc}", exc_info=True)
+          raise CustomError(
+            400, 
+            f"Erro ao criar subcategoria '{sub_name.strip()}'. Verifique se já existe ou se o nome é válido.",
+            str(sub_exc)
+          ) from sub_exc
+
+    return category_to_update
+
+  except CustomError as e:
+    raise e
+  
+  except Exception as e:
+    logger.error(f"Unexpected error updating ticket category with ID {category_id} with data {category_data}: {e}", exc_info=True)
+    raise CustomError(
+      500,
+      "Ocorreu um erro ao atualizar a categoria de ticket.",
+      str(e)
+    )
+
+async def delete_ticket_category(category_id: int) -> None:
+  """
+  Marca uma categoria de ticket como inativa (soft delete).
+
+  Args:
+    category_id: O id da categoria a ser marcada como inativa.
+
+  Raises:
+    CustomError: Se a categoria não for encontrada ou se ocorrer um erro durante a operação.
+  """
+  try:
+    category_to_delete = await TicketCategories.get_or_none(id=category_id, active=True)
+    if not category_to_delete:
+      raise CustomError(404, "Categoria de ticket não encontrada", f"Nenhuma categoria encontrada com o id: {category_id}")
+
+    category_to_delete.active = False
+    await category_to_delete.save()
+  
+  except CustomError as e:
+    raise e
+    
+  except Exception as e:
+    raise CustomError(
+      500,
+      "Ocorreu um erro ao marcar a categoria de ticket como inativa.",
+      str(e)
+    ) from e
