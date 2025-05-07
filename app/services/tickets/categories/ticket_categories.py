@@ -1,7 +1,16 @@
 import logging
-from app.database.models.helpdesk import TicketCategories, TicketSubcategories, Companies
+from functools import reduce # For OR search
+from operator import or_ # For OR search
+
+from app.database.models.helpdesk import (
+    TicketCategories,
+    TicketSubcategories, # Used by TicketCategories.to_dict
+    Companies            # Used by TicketCategories.to_dict and for filtering
+)
 from app.utils.errors.exceptions import CustomError
 from app.utils.helpers.tickets.categories.ticket_categories import _validate_category_name
+from app.utils.helpers.paginate import paginate # Assuming this is the correct path to your paginate helper
+from tortoise.expressions import Q # For OR search
 
 logger = logging.getLogger(__name__)
 
@@ -44,19 +53,132 @@ async def create_ticket_category(category_data: dict) -> TicketCategories:
       "Ocorreu um erro ao criar a categoria de tickets.",
       str(e)
     ) from e
-  
-async def fetch_ticket_categories() -> list[TicketCategories]:  
+
+async def fetch_ticket_categories(
+  path: str,
+  page_size: int,
+  page: int,
+  current_user: dict,
+  search: str | None = None,
+  and_filters: dict[str, any] | None = None,
+  order_by: str | None = None,
+  original_query_params: dict | None = None
+  ) -> dict[str, any]:
   """
-  Obtém todas as categorias de tickets ativas.
+  Obtém uma lista paginada de categorias de tickets, com filtros e ordenação.
+
+  Args:
+    path (str): O caminho base da URL para links de paginação.
+    page_size (int): O número de itens por página.
+    page (int): O número da página atual.
+    current_user (dict): O utilizador atual.
+    search (str, opcional): Termo de pesquisa geral (OR) para campos como nome e descrição.
+    and_filters (dict, opcional): Dicionário de filtros específicos (AND).
+                                  Ex: {"name": "Support", "companies": 1}
+    order_by (str, opcional): Campos para ordenação (ex: "name,-id").
+    original_query_params (dict, opcional): Parâmetros originais da query para reconstruir URLs de paginação.
 
   Returns:
-    Uma lista de dicionários, com categorias.
+    dict[str, any]: Um dicionário com dados de paginação e a lista de categorias.
+
+  Raises:
+    CustomError: Se ocorrer algum erro durante a busca.
+  """
+  try:
+    queryset = TicketCategories.filter(active=True)
+
+    # Aplicar filtros AND
+    if and_filters:
+      for key, value in and_filters.items():
+        if value is None or (isinstance(value, str) and not value.strip()): # Skip None or empty string values
+            continue
+        
+        if key == "name":
+          queryset = queryset.filter(name__icontains=value)
+        elif key == "description":
+          queryset = queryset.filter(description__icontains=value)
+        elif key == "companies":
+          if isinstance(value, list):
+            if not all(isinstance(item, int) for item in value):
+              logger.warning(f"Invalid company ID list in and_filters: {value}")
+              continue
+            queryset = queryset.filter(companies__id__in=value)
+          elif isinstance(value, int):
+            queryset = queryset.filter(companies__id=value)
+          else:
+            logger.warning(f"Invalid company ID type in and_filters: {value}")
+
+    # Aplicar pesquisa OR
+    if search:
+      search_conditions = [
+        Q(name__icontains=search),
+        Q(description__icontains=search)
+      ]
+      combined_search_q = reduce(or_, search_conditions)
+      queryset = queryset.filter(combined_search_q)
+      
+    # Aplicar ordenação
+    if order_by:
+      order_fields_input = order_by.split(',')
+      valid_order_fields = []
+      allowed_fields = ['id', 'name', 'description'] # Define campos permitidos para ordenação
+      for field in order_fields_input:
+        field_name = field.strip()
+        actual_field_name = field_name.lstrip('-')
+        if actual_field_name in allowed_fields:
+          valid_order_fields.append(field_name)
+        else:
+          logger.warning(f"Ignored invalid order_by field: {field_name}")
+      if valid_order_fields:
+        queryset = queryset.order_by(*valid_order_fields)
+    else:
+      queryset = queryset.order_by('name') # Default order
+
+    queryset = queryset.prefetch_related('companies', 'category_subcategories')
+
+    paginated_result = await paginate(
+      queryset=queryset,
+      url=path,
+      page=page,
+      page_size=page_size,
+      original_query_params=original_query_params
+    )
+    return paginated_result
+
+  except CustomError as e:
+    raise e
+  
+  except Exception as e:
+    logger.error(f"Unexpected error fetching paginated ticket categories: {e}", exc_info=True)
+    raise CustomError(
+      500,
+      "Ocorreu um erro ao obter a lista de categorias de tickets.",
+      str(e)
+    ) from e
+
+async def fetch_all_ticket_categories(company_id: int | None = None) -> list[TicketCategories]:  
+  """
+  Obtém todas as categorias de tickets ativas.
+  Opcionalmente, filtra as categorias por um ID de empresa.
+
+  Returns:
+    Uma lista de instâncias de TicketCategories.
+
+  Args:
+    company_id (int, opcional): O ID da empresa para filtrar as categorias.
+                                 Se None, retorna todas as categorias ativas.
 
   Raises:
     CustomError: Se ocorrer algum erro durante a busca dos dados.
   """
   try:
-    categories = await TicketCategories.filter(active=True).order_by('name').all()
+    query = TicketCategories.filter(active=True)
+
+    if company_id is not None:
+      query = query.filter(companies__id=company_id)
+      
+    categories = await query.order_by('name').all()
+
     return categories
 
   except CustomError as e:

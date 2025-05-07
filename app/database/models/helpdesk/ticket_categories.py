@@ -6,10 +6,13 @@ class TicketCategories(Model):
   name = fields.CharField(max_length=35)
   description = fields.CharField(max_length=255, null=True)
   active = fields.BooleanField(default=True)
+  
   companies = fields.ManyToManyField(
     "helpdesk_models.Companies",
     related_name="ticket_categories",
-    through="helpdesk_models.TicketCategories_Companies"
+    through="ticket_categories_companies",
+    backward_key="ticket_category_id",
+    forward_key="company_id"
   )
   
   class Meta:

@@ -8,4 +8,11 @@ class TicketAssistanceTypes(Model):
   
   class Meta:
     table = "ticket_assistance_types"
+
+  def to_dict(self) -> dict:
+    """Serializa a instancia de TicketAssistanceTypes para dicionário."""
+    return {
+      "id": self.id,
+      "name": self.name
+    }
   

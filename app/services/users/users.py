@@ -705,21 +705,19 @@ async def get_employees_with_permission(permission_id: int, search: str | None =
         Q(full_name__icontains=search),
         Q(local__name__icontains=search),
         Q(department__name__icontains=search),
-        Q(employee_relation__contact__icontains=search)
+        Q(employee_relation__contact__icontains=search, employee_relation__public=True)
       ]
       combined_condition = reduce(or_, search_conditions)
       queryset = queryset.filter(combined_condition)
 
-    # Prefetch related fields for efficiency and for to_dict_contacts()
-    # Ensure all fields needed by to_dict_contacts are included.
-    # 'local' and 'department' are added for the search functionality.
     employees_with_permission = await queryset.prefetch_related(
-        'local', 
-        'department',
-        'employee_relation',
-        'employee_relation__contact_type'
+      'local', 
+      'department',
+      'employee_relation',
+      'employee_relation__contact_type'
     ).distinct().all() 
-    # .distinct() is added because joining with employee_relation for search might cause duplicates
+    # .distinct() por causa do join no employee_relation pode mostrar dados duplicados
+    # se um colaborador tiver vários contactos que iguale à pesquisa
     # if an employee has multiple contacts matching the search term.
     return [await employee.to_dict_contacts() for employee in employees_with_permission]
 

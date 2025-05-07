@@ -247,6 +247,15 @@
     - **Headers**:
       - **X-Refresh-Token**: "string"
 
+### Companies ###
+  #### Fetch companies ####
+  - **Description**:
+    Retrieves a list of all companies.
+  - **API Version**: V1
+  - **Method**: GET
+  - **Endpoint**: `/companies`
+
+
 ### Tickets ###
   #### Create ticket ####
   - **Description**:
@@ -413,12 +422,14 @@
     - **API Version**: V1
     - **Method**: GET
     - **Endpoint**: `/ticket-categories`
+    - **Parameters**:
+      - `company_id` (integer, optional): The ID of the company to filter categories by.
   #### Fetch ticket category details ####
     - **Description**:
       Retrieves the details of a specific ticket category identified by its ID.
     - **API Version**: V1
     - **Method**: GET
-    - **Endpoint**: `/ticket-categories/{id}`
+    - **Endpoint**: `/ticket-categories/details/{id}`
     - **Parameters**:
       - `id` (integer, required): The ID of the ticket category to retrieve.
     - **Headers**:
@@ -428,7 +439,7 @@
       Updates the details of an existing ticket category identified by its ID.
     - **API Version**: V1
     - **Method**: PUT
-    - **Endpoint**: `/ticket-categories/{id}`
+    - **Endpoint**: `/ticket-categories/details/{id}`
     - **Parameters**:
       - `id` (integer, required): The ID of the ticket category to update.
     - **Headers**:
@@ -450,11 +461,43 @@
       Deletes a ticket category identified by its ID.
     - **API Version**: V1
     - **Method**: DELETE
-    - **Endpoint**: `/ticket-categories/{id}`
+    - **Endpoint**: `/ticket-categories/details/{id}`
     - **Parameters**:
       - `id` (integer, required): The ID of the ticket category to soft delete.
     - **Headers**:
       - **Authorization**: "Bearer <access_token>"
-      
-    
-    
+
+### Ticket Subcategories ###
+  #### Delete ticket subcategories ####
+  - **Description**:
+    Deletes a ticket subcategory identified by its ID.  
+  - **API Version**: V1
+  - **Method**: DELETE
+  - **Endpoint**: `/ticket-subcategories/details/{id}`
+  - **Headers**:
+    - **Authorization**: "Bearer <access_token>"
+    - **Required Permission**: `tecnico`
+
+### Ticket Types ###
+  #### Fetch ticket types ####
+  - **Description**:
+    Retrieves a list of all ticket types.
+  - **API Version**: V1
+  - **Method**: GET
+  - **Endpoint**: `/ticket-types`
+
+### Ticket Priorities ###
+  #### Fetch ticket priorities ####
+  - **Description**:
+    Retrieves a list of all ticket priorities.
+  - **API Version**: V1
+  - **Method**: GET
+  - **Endpoint**: `/ticket-priorities`
+
+### Ticket Assistance Types ###
+  #### Fetch ticket assistance types ####
+  - **Description**:
+    Retrieves a list of all ticket assistance types.
+  - **API Version**: V1
+  - **Method**: GET
+  - **Endpoint**: `/ticket-assistance-types`

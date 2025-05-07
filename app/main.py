@@ -32,9 +32,19 @@ app.add_middleware(
 )
 
 from app.routes.users.users import router as employees_router
+from app.routes.companies.companies import router as companies_router
 from app.routes.tickets import router as tickets_router
 from app.routes.tickets.categories.ticket_categories import router as ticket_categories_router
+from app.routes.tickets.subcategories.ticket_subcategories import router as ticket_subcategories_router
+from app.routes.tickets.assistance_types.ticket_assistance_types import router as ticket_assistance_types_router
+from app.routes.tickets.types.ticket_types import router as ticket_types_router
+from app.routes.tickets.priorities.ticket_priorities import router as ticket_priorities_router
 
 app.include_router(employees_router, prefix="/api/v1")
+app.include_router(companies_router, prefix="/api/v1")
 app.include_router(tickets_router, prefix="/api/v1")
 app.include_router(ticket_categories_router, prefix="/api/v1")
+app.include_router(ticket_subcategories_router, prefix="/api/v1")
+app.include_router(ticket_assistance_types_router, prefix="/api/v1")
+app.include_router(ticket_types_router, prefix="/api/v1")
+app.include_router(ticket_priorities_router, prefix="/api/v1")
