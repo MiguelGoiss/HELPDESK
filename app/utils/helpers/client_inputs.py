@@ -5,7 +5,6 @@ from urllib.parse import quote
 def sanitize_input(
   user_input,
   input_type="text",
-  # max_length=255,
   allow_html=False,
   allow_special_chars=False,
   strip=True

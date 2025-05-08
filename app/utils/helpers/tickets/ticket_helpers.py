@@ -14,6 +14,14 @@ import aiofiles
 import os
 import uuid
 import json
+from ..filtering import (
+  _apply_and_filters,
+  _apply_or_search,
+  _apply_ordering, 
+)
+import logging
+
+logger = logging.getLogger(__name__)
 
 # --- Helper para adicionar ccs na criação do ticket ---
 async def _handle_ticket_creation_ccs(ccs_ids: list[int], new_ticket: Tickets):
@@ -459,104 +467,123 @@ ALLOWED_ORDER_FIELDS: set[str] = {
 }
 # --- Fim da configuração ---
 
-async def _apply_and_filters(queryset: QuerySet, filters_dict: dict[str, any]) -> QuerySet:
-  """
-  Aplica filtros AND a um queryset de Tickets, validando os campos e tratando tipos de dados.
+def _apply_filters(
+  queryset: QuerySet,
+  filters_dict: dict[str, any] | None = None,
+  search: str | None = None,
+  order_by: str | None = None
+) -> QuerySet:
 
-  Args:
-    queryset: O queryset do Tortoise ao qual aplicar os filtros.
-    filters_dict: Um dicionário onde as chaves são nomes de campos (ou campos com sufixos _after/_before)
-                  e os valores são os valores a filtrar.
+  if filters_dict:
+    queryset = _apply_and_filters(queryset, DATE_FIELDS, ALLOWED_AND_FILTER_FIELDS, filters_dict)
+  
+  if search:
+    queryset = _apply_or_search(queryset, DEFAULT_OR_SEARCH_FIELDS, search)
 
-  Returns:
-    O queryset com os filtros aplicados.
-
-  Raises:
-    CustomError: Se um campo de filtro for inválido ou um formato de data for inválido.
-  """
-  valid_filters = {}
-
-  if isinstance(filters_dict, str):
-    filters_dict = json.loads(filters_dict)
-
-  for field, value in filters_dict.items():
-    # --- Filtro de datas ---
-    if field.endswith('_after'):
-      base_field = field[:-6] # Remove o '_after'
-      if base_field in DATE_FIELDS:
-        try:
-          start_date = datetime.fromisoformat(str(value)).date()
-          filter_key = f"{base_field}__gte"
-          valid_filters[filter_key] = datetime.combine(start_date, datetime.min.time())
-        except ValueError:
-          raise CustomError(400, "Formato de data inválido", f"Formato inválido para '{field}'. Usar YYYY-MM-DD.")
-      else:
-        raise CustomError(400, "Filtro inválido", f"Não é possível filtrar por data no campo '{base_field}'.")
-    elif field.endswith('_before'):
-      base_field = field[:-7] # Remove o '_before'
-      if base_field in DATE_FIELDS:
-        try:
-          end_date = datetime.fromisoformat(str(value)).date()
-          next_day_start = datetime.combine(end_date + timedelta(days=1), datetime.min.time())
-          filter_key = f"{base_field}__lt"
-          valid_filters[filter_key] = next_day_start
-        except ValueError:
-          raise CustomError(400, "Formato de data inválido", f"Formato inválido para '{field}'. Usar YYYY-MM-DD.")
-      else:
-        raise CustomError(400, "Filtro inválido", f"Não é possível filtrar por data no campo '{base_field}'.")
-    # --- Filtro de campos que não são datas ---
-    elif field in ALLOWED_AND_FILTER_FIELDS:
-      if isinstance(value, str) and not field.endswith('_id'):
-        filter_key = f"{field}__icontains"
-        valid_filters[filter_key] = value
-      elif isinstance(value, list):
-        filter_key = f"{field}__in"
-        valid_filters[filter_key] = value
-      else:
-        valid_filters[field] = value
-    else:
-      raise CustomError(400, "Filtro inválido", f"Não é possível filtrar pelo campo '{field}'.")
-
-  if valid_filters:
-    return queryset.filter(**valid_filters)
+  queryset = _apply_ordering(queryset, ALLOWED_ORDER_FIELDS, "-created_at", order_by)
+  
   return queryset
 
-def _apply_or_search(queryset: QuerySet, search: str | None) -> QuerySet:
-  """Applies OR search conditions across predefined fields."""
-  if not search:
-    return queryset
+# async def _apply_and_filters(queryset: QuerySet, filters_dict: dict[str, any]) -> QuerySet:
+#   """
+#   Aplica filtros AND a um queryset de Tickets, validando os campos e tratando tipos de dados.
 
-  search_conditions = []
-  for field in DEFAULT_OR_SEARCH_FIELDS:
-    if field == 'id' and search.isdigit():
-      search_conditions.append(Q(id=int(search)))
-    else:
-      # Ensure the field is valid for icontains if it's not 'id'
-      # (Tortoise might handle this, but explicit checks can be safer)
-      filter_key = f"{field}__icontains"
-      search_conditions.append(Q(**{filter_key: search}))
+#   Args:
+#     queryset: O queryset do Tortoise ao qual aplicar os filtros.
+#     filters_dict: Um dicionário onde as chaves são nomes de campos (ou campos com sufixos _after/_before)
+#                   e os valores são os valores a filtrar.
 
-  if search_conditions:
-    # Combina todas as condições (OR)
-    combined_condition = reduce(or_, search_conditions)
-    queryset = queryset.filter(combined_condition)
-  else:
-    # Should not happen if search is not None and DEFAULT_OR_SEARCH_FIELDS is not empty,
-    # but good practice to handle. Could also return queryset.none() if no match is desired.
-    pass # Or: queryset = queryset.none() if no conditions generated means no results
-  return queryset
+#   Returns:
+#     O queryset com os filtros aplicados.
 
-def _apply_ordering(queryset: QuerySet, order_by: str | None) -> QuerySet:
-  """Applies ordering to the queryset, validating the field and using a default."""
-  if order_by:
-    order_field_name = order_by.lstrip('-') # Retira o '-' se houver
-    if order_field_name in ALLOWED_ORDER_FIELDS:
-      queryset = queryset.order_by(order_by)
-    else:
-      raise CustomError(400, "Ordenação inválida", f"Ordenação pelo campo '{order_field_name}' não é permitida.")
-  else:
-    # Por defeito o order é pela data de criação
-    queryset = queryset.order_by('-created_at')
-  return queryset
+#   Raises:
+#     CustomError: Se um campo de filtro for inválido ou um formato de data for inválido.
+#   """
+#   valid_filters = {}
+
+#   if isinstance(filters_dict, str):
+#     filters_dict = json.loads(filters_dict)
+
+#   for field, value in filters_dict.items():
+#     # --- Filtro de datas ---
+#     if field.endswith('_after'):
+#       base_field = field[:-6] # Remove o '_after'
+#       if base_field in DATE_FIELDS:
+#         try:
+#           start_date = datetime.fromisoformat(str(value)).date()
+#           filter_key = f"{base_field}__gte"
+#           valid_filters[filter_key] = datetime.combine(start_date, datetime.min.time())
+#         except ValueError:
+#           raise CustomError(400, "Formato de data inválido", f"Formato inválido para '{field}'. Usar YYYY-MM-DD.")
+#       else:
+#         raise CustomError(400, "Filtro inválido", f"Não é possível filtrar por data no campo '{base_field}'.")
+#     elif field.endswith('_before'):
+#       base_field = field[:-7] # Remove o '_before'
+#       if base_field in DATE_FIELDS:
+#         try:
+#           end_date = datetime.fromisoformat(str(value)).date()
+#           next_day_start = datetime.combine(end_date + timedelta(days=1), datetime.min.time())
+#           filter_key = f"{base_field}__lt"
+#           valid_filters[filter_key] = next_day_start
+#         except ValueError:
+#           raise CustomError(400, "Formato de data inválido", f"Formato inválido para '{field}'. Usar YYYY-MM-DD.")
+#       else:
+#         raise CustomError(400, "Filtro inválido", f"Não é possível filtrar por data no campo '{base_field}'.")
+#     # --- Filtro de campos que não são datas ---
+#     elif field in ALLOWED_AND_FILTER_FIELDS:
+#       if isinstance(value, str) and not field.endswith('_id'):
+#         filter_key = f"{field}__icontains"
+#         valid_filters[filter_key] = value
+#       elif isinstance(value, list):
+#         filter_key = f"{field}__in"
+#         valid_filters[filter_key] = value
+#       else:
+#         valid_filters[field] = value
+#     else:
+#       raise CustomError(400, "Filtro inválido", f"Não é possível filtrar pelo campo '{field}'.")
+
+#   if valid_filters:
+#     return queryset.filter(**valid_filters)
+#   return queryset
+
+# def _apply_or_search(queryset: QuerySet, search: str | None) -> QuerySet:
+#   """Applies OR search conditions across predefined fields."""
+#   if not search:
+#     return queryset
+
+#   search_conditions = []
+#   for field in DEFAULT_OR_SEARCH_FIELDS:
+#     if field == 'id' and search.isdigit():
+#       search_conditions.append(Q(id=int(search)))
+#     else:
+#       # Ensure the field is valid for icontains if it's not 'id'
+#       # (Tortoise might handle this, but explicit checks can be safer)
+#       filter_key = f"{field}__icontains"
+#       search_conditions.append(Q(**{filter_key: search}))
+
+#   if search_conditions:
+#     # Combina todas as condições (OR)
+#     combined_condition = reduce(or_, search_conditions)
+#     queryset = queryset.filter(combined_condition)
+#   else:
+#     # Should not happen if search is not None and DEFAULT_OR_SEARCH_FIELDS is not empty,
+#     # but good practice to handle. Could also return queryset.none() if no match is desired.
+#     pass # Or: queryset = queryset.none() if no conditions generated means no results
+#   return queryset
+
+# def _apply_ordering(queryset: QuerySet, order_by: str | None) -> QuerySet:
+#   """Applies ordering to the queryset, validating the field and using a default."""
+#   if order_by:
+#     order_field_name = order_by.lstrip('-') # Retira o '-' se houver
+#     if order_field_name in ALLOWED_ORDER_FIELDS:
+#       queryset = queryset.order_by(order_by)
+#     else:
+#       raise CustomError(400, "Ordenação inválida", f"Ordenação pelo campo '{order_field_name}' não é permitida.")
+#   else:
+#     # Por defeito o order é pela data de criação
+#     queryset = queryset.order_by('-created_at')
+#   return queryset
 
 # --- Fim dos helpers do fetch dos tickets ---
+
+

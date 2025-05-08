@@ -1,7 +1,7 @@
 from fastapi import Form, HTTPException
 from pydantic import BaseModel, EmailStr, field_validator, ValidationInfo
 from datetime import datetime
-from app.utils.helpers.user_inputs import sanitize_input
+from app.utils.helpers.client_inputs import sanitize_input
 import json
 
 class BaseSupplierContacts(BaseModel):

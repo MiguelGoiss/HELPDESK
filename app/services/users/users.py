@@ -10,6 +10,7 @@ from tortoise.exceptions import DoesNotExist
 import time
 from functools import reduce
 from operator import or_
+from app.utils.helpers.employees.employee_helpers import _apply_filters
 
 
 async def validate_unique_fields(model_class, fields_to_check: dict, exclude_id: int | None = None):
@@ -157,52 +158,18 @@ async def get_users(
   path: str,
   page: int,
   page_size: int,
-  original_query_params: dict[str, any] | None = None,
+  original_query_params: dict[str, any] | None,
   # O parametro search serve para pesquisa (OR)
-  search: str | None = None,
+  search: str | None,
   # Dict para pesquisa especifica (AND)
-  and_filters: dict[str, any] | None = None,
+  and_filters: dict[str, any] | None,
   # Campos para ordenação, usar o prefixo '-' para descendente
-  order_by: str | None = None
+  order_by: str | None
 ):
   start = time.time()
   queryset = Employees.filter(deleted_at__isnull=True)
 
-  # Aplicar os filtros (AND)
-  if and_filters:
-    valid_and_filters = {}
-    for field, value in and_filters.items():
-      if field in ALLOWED_AND_FILTER_FIELDS:
-        # You could add more sophisticated lookup logic here if needed
-        # e.g., if value is a list, use __in, or parse __gte, __lte etc.
-        # For now, assuming exact match unless the field name implies otherwise
-        filter_key = f"{field}__icontains"
-        valid_and_filters[filter_key] = value
-      else:
-        raise CustomError(400, "Pesquisa inválida", "Não é possível filtrar pelo campo '{field}'.")
-        
-    if valid_and_filters:
-      # Aplica filtros a com os argumentos acima
-      queryset = queryset.filter(**valid_and_filters)
-
-  # Aplica pesquisa geral (OR)
-  if search:
-    search_conditions = [
-      Q(**{f"{field}__icontains": search}) for field in DEFAULT_OR_SEARCH_FIELDS
-    ]
-    if search_conditions:
-      combined_condition = reduce(or_, search_conditions)
-      queryset = queryset.filter(combined_condition)
-
-  # Aplica os orders
-  if order_by:
-    # Valida os campos de order
-    order_field_name = order_by.lstrip('-') # Obtem o campo sem o '-'
-    if order_field_name in ALLOWED_ORDER_FIELDS:
-      queryset = queryset.order_by(order_by) # Passa a string original com '-' (se for o caso)
-    else:
-      raise CustomError(400, "Ordenação inválida", f"Ordenação pelo campo '{order_field_name}' não é permitida.")
-      queryset = queryset.order_by('id')
+  queryset = _apply_filters(queryset, and_filters, search, order_by)
 
   # Fazer os dados relacionados (Prefetch) para maior eficiencia (IMPORTANTE! reduziu o tempo para metade!)
   # Garantir que todos os campos necessários no .to_dict() estão prefetched

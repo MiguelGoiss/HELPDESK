@@ -11,7 +11,5 @@ from .ticket_helpers import (
   _handle_ccs_update,
   _handle_update_logging,
   _handle_update_notifications,
-  _apply_and_filters,
-  _apply_or_search,
-  _apply_ordering,
+  _apply_filters,
 )

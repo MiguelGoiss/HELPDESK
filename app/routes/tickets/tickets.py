@@ -79,6 +79,7 @@ async def get_ticket_presets_count(
   and_filters: str | None = None,
   search: str | None = None,
 ):
+  print(and_filters)
   ticket_presets = await handle_preset_counts(current_user, search, and_filters, own)
   return ticket_presets
 

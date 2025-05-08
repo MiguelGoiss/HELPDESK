@@ -13,9 +13,7 @@ from app.utils.helpers.tickets import (
   _handle_ccs_update,
   _handle_update_logging,
   _handle_update_notifications,
-  _apply_and_filters,
-  _apply_or_search,
-  _apply_ordering,
+  _apply_filters,
 )
 from app.utils.errors.exceptions import CustomError
 from app.utils.helpers.paginate import paginate
@@ -113,30 +111,29 @@ async def fetch_tickets(
   page_size: int,
   page: int,
   current_user: dict,
-  own: bool,
-  original_query_params: dict | None = None,
+  own: bool | None,
+  original_query_params: dict | None,
   # O parametro search serve para pesquisa geral (OR)
-  search: str | None = None,
+  search: str | None,
   # Dict para pesquisa especifica (AND)
-  and_filters: dict[str, any] | None = None,
+  and_filters: dict[str, any] | None,
   # Campos para ordenação, usar o prefixo '-' para descendente
-  order_by: str | None = None
+  order_by: str | None
   ) -> dict:
   start = time.time()
   queryset = Tickets.all()
 
-  if own:
-    queryset = queryset.filter(Q(requester_id=current_user['id']) | Q(agent_id=current_user['id']))
-
+  # Aplica os filtros
+  queryset = _apply_filters(queryset, and_filters, search, order_by)
   # Filtros para o search (AND)
-  if and_filters:
-    queryset = await _apply_and_filters(queryset, and_filters)
+  # if and_filters:
+  #   queryset = await _apply_and_filters(queryset, and_filters)
 
-  # Aplica search geral (OR)
-  queryset = _apply_or_search(queryset, search)
+  # # Aplica search geral (OR)
+  # queryset = _apply_or_search(queryset, search)
 
-  # Aplica o order
-  queryset = _apply_ordering(queryset, order_by)
+  # # Aplica o order
+  # queryset = _apply_ordering(queryset, order_by)
 
   # Annotate com count para obter a contagem dos attachments em vez dos attachments
   queryset = queryset.annotate(attachments_count=Count("attachments"))
@@ -295,7 +292,7 @@ async def update_ticket_details(
 
 # --- Inicio dos counts dos presets ---
 
-async def fetch_preset_counts(search: str | None = None, and_filters: dict[str, any] | None = None, own: bool | None = False, current_user: dict | None = None) -> list[dict]:
+async def fetch_preset_counts(search: str | None , and_filters: dict[str, any] | None, own: bool | None, current_user: dict | None) -> list[dict]:
   """
   Calcula a contagem de tickets para cada preset definido,
   opcionalmente aplicando filtros base adicionais.
@@ -316,31 +313,19 @@ async def fetch_preset_counts(search: str | None = None, and_filters: dict[str, 
 
   # Cria um queryset base
   base_queryset = Tickets.all()
-
+  
   if own:
-    # if not current_user or 'id' not in current_user:
-    #   raise CustomError(400, "Utilizador inválido", "Não é possível filtrar por 'own' sem um utilizador válido.")
     base_queryset = base_queryset.filter(Q(requester_id=current_user['id']) | Q(agent_id=current_user['id']))
-
-  # Aplica filtros base se fornecidos
-  if and_filters:
-    try:
-      base_queryset = await _apply_and_filters(base_queryset, and_filters)
-    except CustomError as e:
-      logger.error(f"Error applying base filters in fetch_preset_counts: {e}", exc_info=True)
-      raise e 
-
-  # Aplica search geral (OR)
-  base_queryset = _apply_or_search(base_queryset, search)
 
   for preset in presets:
     preset_queryset = base_queryset # Começa com o queryset base (já filtrado se and_filters foi passado)
     if preset.filter:
       try:
         preset_filter_dict = json.loads(preset.filter)
+          
         if isinstance(preset_filter_dict, dict):
           # Aplica os filtros específicos do preset sobre o queryset base
-          preset_queryset = await _apply_and_filters(preset_queryset, preset_filter_dict)
+          preset_queryset = _apply_filters(preset_queryset, preset_filter_dict)
         else:
           logger.warning(f"Preset '{preset.name}' (ID: {preset.id}) filter is not a valid JSON object. Skipping preset filters.")
       except json.JSONDecodeError:

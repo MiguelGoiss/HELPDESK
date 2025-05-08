@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr, field_validator, ValidationInfo
-from app.utils.helpers.user_inputs import sanitize_input
+from app.utils.helpers.client_inputs import sanitize_input
 
 class EmployeeContacts(BaseModel):
   contact: str

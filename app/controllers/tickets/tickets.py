@@ -42,9 +42,9 @@ async def handle_fetch_tickets(
   original_query_params: dict,
   current_user: dict,
   own: bool,
-  search: str | None = None,
-  and_filters: str | None = None,
-  order_by: str | None = None,
+  search: str | None,
+  and_filters: str | None,
+  order_by: str | None,
 ):
   try:
     logger.info(f"Handling fetch tickets request. Page: {page}, Page Size: {page_size}, Search: '{search}', Order By: '{order_by}'")
@@ -60,7 +60,7 @@ async def handle_fetch_tickets(
       except (json.JSONDecodeError, ValueError) as json_error:
         logger.error(f"Failed to parse and_filters JSON string: {and_filters}. Error: {json_error}", exc_info=True)
         raise CustomError(400, f"Invalid format for 'and_filters'. Expected a valid JSON object string. Error: {json_error}")
-
+    print(and_filters)
     tickets_result = await fetch_tickets(
       path=path,
       page=page,
@@ -121,6 +121,7 @@ async def handle_preset_counts(
   and_filters: str | None = None,
   own: bool | None = False,
 ):
+  print(and_filters)
   presets_count = await fetch_preset_counts(search, and_filters, own, current_user)
   return presets_count
 

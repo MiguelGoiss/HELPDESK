@@ -1,5 +1,5 @@
 from pydantic import BaseModel, field_validator, ValidationInfo, Field
-from app.utils.helpers.user_inputs import sanitize_input
+from app.utils.helpers.client_inputs import sanitize_input
 
 class BaseCreateTicketCategory(BaseModel):
   name: str

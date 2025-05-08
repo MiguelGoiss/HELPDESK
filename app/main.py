@@ -21,7 +21,7 @@ async def lifespan(app: FastAPI):
   yield
   await close_db()
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(title="IT Helpdesk | Grupo AFA", lifespan=lifespan, version="1.0.0", )
 
 app.add_middleware(
   CORSMiddleware,
