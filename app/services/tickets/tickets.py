@@ -349,4 +349,59 @@ async def fetch_preset_counts(search: str | None , and_filters: dict[str, any] |
 
 # --- Fim dos counts dos presets ---
 
+# --- Inicio do get dos logs do ticket ---
+
+async def fetch_ticket_logs(
+  ticket_uid: str
+) -> list[dict]:
+  """
+  Obtém os logs de atividade para um ticket específico.
+
+  Args:
+    ticket_uid: O UID (string) do ticket para o qual obter os logs.
+
+  Returns:
+    Uma lista de dicionários, cada um representando um log de ticket.
+
+  Raises:
+    CustomError: Se o ticket com o UID fornecido não for encontrado,
+                 ou se ocorrer um erro durante a busca dos logs.
+  """
+  try:
+    # Verificar primeiro se o ticket existe
+    ticket_exists = await Tickets.exists(uid=ticket_uid)
+    if not ticket_exists:
+      logger.warning(f"Tentativa de obter logs para um ticket não existente com UID: {ticket_uid}")
+      raise CustomError(404, "Ticket não encontrado", f"Nenhum ticket encontrado com o UID: {ticket_uid}")
+
+    logs_queryset = TicketLogs.filter(target__uid=ticket_uid).order_by('-created_at').prefetch_related('agent')
     
+    ticket_logs = await logs_queryset.all()
+
+    serialized_logs = []
+    for log_entry in ticket_logs:
+      agent_info = None
+      if log_entry.agent:
+        agent_info = {
+          "id": log_entry.agent.id,
+          "name": f"{getattr(log_entry.agent, 'first_name', None)} {getattr(log_entry.agent, 'last_name', None)}"
+        }
+
+      serialized_logs.append({
+        "id": log_entry.id,
+        "action_type": log_entry.action_type,
+        "old_values": log_entry.old_values,
+        "new_values": log_entry.new_values,
+        "details": log_entry.details,
+        "created_at": log_entry.created_at.isoformat() if log_entry.created_at else None,
+        "agent": agent_info
+      })
+      
+    return serialized_logs
+
+  except CustomError as e:
+    raise e
+  except Exception as e:
+    logger.error(f"Erro ao obter logs para o ticket UID {ticket_uid}: {e}", exc_info=True)
+    raise CustomError(500, "Erro ao obter os logs do ticket", str(e)) from e
+  

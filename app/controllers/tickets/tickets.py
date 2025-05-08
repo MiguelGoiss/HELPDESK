@@ -6,6 +6,7 @@ from app.services.tickets import (
   fetch_ticket_details,
   update_ticket_details,
   fetch_preset_counts,
+  fetch_ticket_logs,
 )
 from app.utils.errors.exceptions import CustomError
 from app.schemas.tickets import BaseCreateTicket
@@ -60,7 +61,7 @@ async def handle_fetch_tickets(
       except (json.JSONDecodeError, ValueError) as json_error:
         logger.error(f"Failed to parse and_filters JSON string: {and_filters}. Error: {json_error}", exc_info=True)
         raise CustomError(400, f"Invalid format for 'and_filters'. Expected a valid JSON object string. Error: {json_error}")
-    print(and_filters)
+
     tickets_result = await fetch_tickets(
       path=path,
       page=page,
@@ -121,8 +122,21 @@ async def handle_preset_counts(
   and_filters: str | None = None,
   own: bool | None = False,
 ):
-  print(and_filters)
   presets_count = await fetch_preset_counts(search, and_filters, own, current_user)
   return presets_count
+
+async def handle_fetch_ticket_logs(
+  uid: str
+):
+  try:
+    ticket_logs = await fetch_ticket_logs(uid)
+    return ticket_logs
+  except CustomError as e:
+    logger.error(f"CustomError during fetching tickets: Status={e.status_code}, Detail={e.detail}", exc_info=True)
+    raise e
+
+  except Exception as e:
+    logger.error(f"Unexpected error during fetching tickets: {e}", exc_info=True)
+    raise e
 
 

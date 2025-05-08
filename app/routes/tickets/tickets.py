@@ -8,6 +8,7 @@ from app.controllers.tickets import (
   handle_fetch_ticket_details,
   handle_update_ticket,
   handle_preset_counts,
+  handle_fetch_ticket_logs,
 )
 
 router = APIRouter(prefix="/tickets", tags=["Tickets"])
@@ -82,4 +83,13 @@ async def get_ticket_presets_count(
   print(and_filters)
   ticket_presets = await handle_preset_counts(current_user, search, and_filters, own)
   return ticket_presets
+
+@router.get("/details/{uid}/logs", dependencies=[Depends(require_permission("tecnico"))])
+async def get_ticket_logs(
+  uid: str,
+  _: dict = Depends(validate_access_token),
+):
+  ticket_logs = await handle_fetch_ticket_logs(uid)
+  return ticket_logs
+
 
