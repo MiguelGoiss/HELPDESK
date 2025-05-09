@@ -393,6 +393,19 @@
         { "name": "novos", "filter": "{\"status_id\": 1}", "count": 15 },...
       ]
       ```
+  #### Ticket logs ####
+    - **Description**:
+      Retrieves the logs for a specific ticket identified by its UID.
+      This endpoint fetches all log entries associated with the ticket, ordering them by creation date in descending order (most recent first).
+      Each log entry includes details about the change made, the user who made the change, and the timestamp of the change.
+    - **API Version**: V1
+    - **Method**: GET
+    - **Endpoint**: `/tickets/details/{uid}/logs`
+    - **Path Parameters**:
+      - `uid` (string, required): The unique identifier of the ticket to retrieve logs for.
+    - **Headers**:
+      - **Authorization**: "Bearer <access_token>"
+      - **Permission**: `tecnico`
 ### Ticket Categories ###
   #### Create ticket category ####
   - **Description**:
