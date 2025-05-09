@@ -1,7 +1,7 @@
 from app.utils.errors.exceptions import CustomError
 from fastapi_mail import FastMail, MessageSchema, ConnectionConfig
 from jinja2 import Template
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import random
 from app.utils.helpers.encryption import JOSEDictCrypto
 from app.services.users import add_recovery_token
@@ -29,7 +29,7 @@ async def recovery_email(request_user: dict):
       "id": request_user['id'],
       "first_name": request_user['first_name'],
       "last_name": request_user['last_name'],
-      "exp": (datetime.now() + timedelta(minutes=15)).timestamp(),
+      "exp": (datetime.now(timezone.utc) + timedelta(minutes=15)).timestamp(),
       "secret": six_digit_secret
     }
     
@@ -45,7 +45,7 @@ async def recovery_email(request_user: dict):
     # Render template with variables
     html_content = Template(template_content).render(
       verification_code=six_digit_secret,
-      current_year=datetime.now().year
+      current_year=datetime.now(timezone.utc).year
     )
     
     for contact in request_user['contacts']:

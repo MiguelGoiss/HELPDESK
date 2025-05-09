@@ -1,7 +1,7 @@
 from app.database.models.helpdesk import Employees, Companies, EmployeeLogs, EmployeeContacts, EmployeePermissions
 from app.utils.errors.exceptions import CustomError
 from app.utils.helpers.paginate import paginate
-from datetime import datetime
+from datetime import datetime, timezone
 from .auth import create_token, validate_access_token
 from app.utils.helpers.encryption import JOSEDictCrypto
 from app.services.logs import LogService
@@ -401,12 +401,12 @@ async def update_user_details(id: int, user_data: dict, current_user: dict):
     # Se for para desativar o utilizador procura o campo "deactivate"
     if 'deactivate' in update_data:
       if getattr(user_data, 'deactivate'):
-        update_data['deactivated_at'] = datetime.now()
+        update_data['deactivated_at'] = datetime.now(timezone.utc)
       else:
         update_data['deactivated_at'] = None
 
     # Adiciona o campo updated_at ao dict
-    update_data['updated_at'] = datetime.now()
+    update_data['updated_at'] = datetime.now(timezone.utc)
 
     if 'password' in update_data:
       update_data['password'] = db_user.hash_password(getattr(user_data, 'password'))
@@ -461,7 +461,7 @@ async def delete_user_details(id: int):
     # Obtem o colaborador através do id
     db_user = await fetch_user_for_changes(id)
     # Atualiza o campo de "deleted_at" com a data atual
-    await db_user.update_from_dict({ 'deleted_at': datetime.now() }).save()
+    await db_user.update_from_dict({ 'deleted_at': datetime.now(timezone.utc) }).save()
 
   except CustomError as e:
     raise e
@@ -583,7 +583,7 @@ async def code_verification(code: dict):
     decrypt_code = crypto.decrypt_dict(db_user.recovery_token)
 
     # Valida a data de expiração do token
-    if decrypt_code['exp'] < datetime.now().timestamp():
+    if decrypt_code['exp'] < datetime.now(timezone.utc).timestamp():
       # Se a data de expiração já tiver passado, remove o token do colaborador e repõe as tentativas
       await db_user.update_from_dict(
         {

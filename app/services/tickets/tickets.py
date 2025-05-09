@@ -17,7 +17,7 @@ from app.utils.helpers.tickets import (
 )
 from app.utils.errors.exceptions import CustomError
 from app.utils.helpers.paginate import paginate
-from datetime import datetime
+from datetime import datetime, timezone
 from app.services.logs import LogService
 from tortoise.functions import Count
 from tortoise.transactions import in_transaction
@@ -49,7 +49,7 @@ async def create_ticket(
       if current_user:
         ticket_dict['created_by_id'] = current_user['id']
 
-      ticket_dict['created_at'] = datetime.now()
+      ticket_dict['created_at'] = datetime.now(timezone.utc)
 
       # Criar o ticket
       new_ticket_orm = await Tickets()._create_ticket(**ticket_dict)

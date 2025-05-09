@@ -5,9 +5,14 @@ class Locals(Model):
   id = fields.IntField(pk=True)
   name = fields.CharField(max_length=50)
   short = fields.CharField(max_length=10)
-  company = fields.ForeignKeyField("helpdesk_models.Companies", related_name="company_local_relations", db_column="company_id")
   background = fields.CharField(max_length=10)
   text = fields.CharField(max_length=10)
+  
+  company = fields.ForeignKeyField(
+    "helpdesk_models.Companies",
+    related_name="company_local_relations",
+    db_column="company_id"
+  )
 
   class Meta:
     table = "locals"

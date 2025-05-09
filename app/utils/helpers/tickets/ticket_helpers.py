@@ -2,18 +2,14 @@ from app.database.models.helpdesk import Tickets, TicketLogs, TicketAttachments,
 from app.services.users import get_users_by_ids, get_employee_basic_info
 from app.services.emails.emails import ticket_email
 from app.utils.errors.exceptions import CustomError
-from tortoise.expressions import Q
 from tortoise.queryset import QuerySet
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 from app.services.logs import LogService
 from fastapi import UploadFile
 from pathlib import Path
-from functools import reduce
-from operator import or_
 import aiofiles
 import os
 import uuid
-import json
 from ..filtering import (
   _apply_and_filters,
   _apply_or_search,
@@ -69,7 +65,7 @@ def _generate_save_path(file_ext: str) -> tuple[Path, str]:
   """Gera um filename único e o path para guardar."""
   unique_filename = f"{uuid.uuid4()}{file_ext}"
   # Use current date for directory structure
-  date_now = datetime.now()
+  date_now = datetime.now(timezone.utc)
   date_save_path = UPLOAD_DIRECTORY / date_now.strftime("%Y/%m/%d")
   date_save_path.mkdir(parents=True, exist_ok=True)
   save_path = date_save_path / unique_filename
@@ -260,7 +256,7 @@ def _handle_closed_at_update(ticket: Tickets, old_ticket_details: dict):
   # Alteração do estado para "Closed" (7)
   if final_status_id == 7 and original_status_id != 7:
     if not ticket.closed_at: # Insere "closed_at" apenas se já não estiver inserido
-      ticket.closed_at = datetime.now()
+      ticket.closed_at = datetime.now(timezone.utc)
   # Alteração de estado de "Closed" (7) para "Reopen" (8)
   elif final_status_id != 7 and original_status_id == 7:
     ticket.closed_at = None # Limpa o "closed_at"

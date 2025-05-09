@@ -1,10 +1,8 @@
 from tortoise.models import Model
 from tortoise import fields
-from datetime import datetime
+from datetime import datetime, timezone
 import hashlib
 from tortoise.queryset import QuerySet
-import pytz
-lisbon_tz = pytz.timezone('Europe/Lisbon')
 
 class Tickets(Model):
   id = fields.IntField(pk=True)
@@ -127,8 +125,8 @@ class Tickets(Model):
       "response": self.response,
       "internal_comment": self.internal_comment,
       "ccs": ccs,
-      "prevention_date": self.prevention_date.astimezone(lisbon_tz).isoformat() if self.prevention_date else None,
-      "closed_at": self.closed_at.astimezone(lisbon_tz).isoformat() if self.closed_at else None,
+      "prevention_date": self.prevention_date.isoformat() if self.prevention_date else None,
+      "closed_at": self.closed_at.isoformat() if self.closed_at else None,
       "spent_time": self.spent_time,
       "supplier_reference": self.supplier_reference,
       "company": company.name if company else None,
@@ -168,8 +166,8 @@ class Tickets(Model):
       "subject": self.subject,
       "request": self.request,
       "response": self.response,
-      "closed_at": self.closed_at.astimezone(lisbon_tz).isoformat() if self.closed_at else None,
-      "created_at": self.created_at.astimezone(lisbon_tz).isoformat(),
+      "closed_at": self.closed_at.isoformat() if self.closed_at else None,
+      "created_at": self.created_at.isoformat(),
       "status": status,
       "priority": priority,
       "category": category,
@@ -205,7 +203,7 @@ class Tickets(Model):
       "response": self.response,
       "closed_at": self.closed_at.strftime("%d/%m/%Y - %H:%M") if self.closed_at else None,
       "created_at": self.created_at.strftime("%d/%m/%Y - %H:%M"),
-      "prevention_date": self.prevention_date.astimezone(lisbon_tz).isoformat() if self.prevention_date else None,
+      "prevention_date": self.prevention_date.isoformat() if self.prevention_date else None,
       "status": status,
       "priority": priority,
       "category": category,
@@ -225,10 +223,10 @@ class Tickets(Model):
     new_ticket = await Tickets.create(**kwargs)
     # Cria os detalhes para o hash
     try: 
-      created_at_str = new_ticket.created_at.astimezone(lisbon_tz).isoformat()
+      created_at_str = new_ticket.created_at.isoformat()
       data_to_hash = f"{new_ticket.id}-{created_at_str}-{new_ticket.requester_id}"
     except AttributeError:
-      data_to_hash = f"{new_ticket.id}-{new_ticket.requester_id}-{datetime.now().isoformat()}"
+      data_to_hash = f"{new_ticket.id}-{new_ticket.requester_id}-{datetime.now(timezone.utc).isoformat()}"
     
     # Cria o uid
     hasher = hashlib.sha256()

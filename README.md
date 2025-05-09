@@ -250,11 +250,184 @@
 ### Companies ###
   #### Fetch companies ####
   - **Description**:
-    Retrieves a list of all companies.
+    Retrieves a list of all **active** companies. Each company in the list will include its associated **locals**.
+    Companies are considered active if their `deactivated_at` field is `null`.
+    The list is ordered by company name.
   - **API Version**: V1
   - **Method**: GET
   - **Endpoint**: `/companies`
-
+  - **Headers**:
+    - **Authorization**: "Bearer <access_token>"
+  - **Success Response (200 OK)**:
+    ```JSON
+    [
+      {
+        "id": "integer",
+        "name": "string",
+        "acronym": "string",
+        // ... other company fields ...
+        "locals": [
+          {
+            "id": "integer",
+            "name": "string",
+            "short": "string",
+            "background": "string", // e.g., "#FFFFFF"
+            "text": "string" // e.g., "#000000"
+          },
+          // ... more locals for this company ...
+        ]
+      },
+      // ... more company objects ...
+    ]
+    ```
+  - **Error Responses**:
+    - `500 Internal Server Error`: If an unexpected error occurs during data retrieval.
+  #### Create company ####
+    - **Description**:
+      Creates a new company. This endpoint allows for the simultaneous creation of associated locals and the establishment of links to existing ticket categories.
+      The operation is performed within a database transaction to ensure data integrity.
+      - *Validation*: Input data is validated. For example, the company name must be unique.
+      - *Locals*: If a list of local data is provided, new local records will be created and associated with the new company.
+      - *Ticket Categories*: If a list of existing ticket category IDs is provided, associations will be created between the new company and these categories.
+    - **API Version**: V1
+    - **Method**: POST
+    - **Endpoint**: `/companies`
+    - **Headers**:
+      - **Authorization**: "Bearer <access_token>"
+      - **Permission**: `tecnico`
+    - **Request**:
+      ```JSON
+        {
+          "name": "string", // Required, must be unique
+          "acronym": "string", // Required
+          "locals": [ // Optional
+            {
+              "name": "string", // Required if locals ispresent
+              "short": "string", // Required if locals is present
+              "background": "string", // Required if locals is present (e.g., "#FFFFFF")
+              "text": "string" // Required if locals is present (e.g., "#000000")
+            },
+            ...
+          ],
+          "ticket_category_ids": [ // Optional: List of existing TicketCategory ids
+            "integer",
+            ...
+          ]
+        }
+      ```
+    - **Success Response (201 Created)**: Returns the newly created company object (details may vary based on serialization, but typically includes ID, name, acronym, and potentially the newly created/associated relations if fetched post-creation).
+    - **Error Responses**:
+      - `400 Bad Request`: If required fields are missing or data is invalid.
+      - `409 Conflict`: If a company with the same name already exists, or other integrity constraint violations.
+      - `500 Internal Server Error`: If an unexpected error occurs during creation.
+  #### Fetch company by ID ####
+    - **Description**:
+      Retrieves detailed information for a specific company identified by its `company_id`.
+      The response includes the company's core details, a list of its associated `locals`, and a list of its `ticket_category_associations`.
+      This endpoint is useful for getting a complete view of a single company.
+    - **API Version**: V1
+    - **Method**: GET
+    - **Endpoint**: `/companies/details/{company_id}`
+    - **Parameters**:
+      - `company_id` (integer, required): The unique ID of the company to retrieve.
+    - **Headers**:
+      - **Authorization**: "Bearer <access_token>"
+      - **Permission**: `tecnico`
+    - **Success Response (200 OK)**:
+      ```JSON
+      {
+        "id": "integer",
+        "name": "string",
+        "acronym": "string",
+        "deactivated_at": "string or null (datetime)",
+        // ... other direct company fields ...
+        "locals": [
+          {
+            "id": "integer",
+            "name": "string",
+            "short": "string",
+            "background": "string",
+            "text": "string"
+          },
+          // ... more locals ...
+        ],
+        "ticket_categories": [ 
+          "integer", // id of the TicketCategory
+          // ... more associated ticket categories ...
+        ]
+      }
+      ```
+    - **Error Responses**:
+      - `404 Not Found`: If no company with the specified `company_id` exists.
+      - `500 Internal Server Error`: If an unexpected error occurs during data retrieval.
+  #### Update company details ####
+    - **Description**:
+      Updates the details of an existing company identified by its `company_id`.
+      This endpoint allows for modification of the company's direct attributes (`name`, `acronym`),
+      as well as comprehensive management of its associated `locals` and `ticket_category` associations.
+      All database operations are performed within a transaction to ensure atomicity.
+      - **Direct Attributes**: `name` and `acronym` can be updated. If provided, they cannot be empty.
+      - **Locals Management**:
+        - If the `locals` array is provided, it will synchronize the company's locals with the provided list.
+        - Locals in the list with an `id` will be updated with the provided data.
+        - Locals in the list without an `id` will be created as new locals associated with the company.
+        - Any existing locals associated with the company that are *not* present in the provided `locals` list (identified by their `id`) will be deleted.
+      - **Ticket Category Associations**:
+        - If the `ticket_category_ids` array is provided, it will synchronize the company's associations with ticket categories.
+        - Associations will be created for any `ticket_category_ids` in the list that are not already linked to the company.
+        - Existing associations will be removed if their `ticket_category_id` is not present in the provided list.
+    - **API Version**: V1
+    - **Method**: PUT
+    - **Endpoint**: `/companies/details/{company_id}`
+    - **Parameters**:
+      - `company_id` (integer, required): The unique ID of the company to update.
+    - **Headers**:
+      - **Authorization**: "Bearer <access_token>"
+      - **Permission**: `tecnico`
+    - **Request Body**:
+      ```JSON
+      {
+        "name": "string", // Optional, cannot be empty if provided
+        "acronym": "string", // Optional, cannot be empty if provided
+        "locals": [ // Optional: Full list to synchronize locals
+          {
+            "id": "integer", // Optional: Include to update an existing local
+            "name": "string", // Required for new locals, cannot be empty if provided for update
+            "short": "string", // Required for new locals, cannot be empty if provided for update
+            "background": "string", // Required for new locals, cannot be empty if provided for update
+            "text": "string" // Required for new locals, cannot be empty if provided for update
+          },
+          // ... more local objects ...
+        ],
+        "ticket_category_ids": [ // Full list of ticket category ids to associate
+          "integer",
+          // ... more ticket category IDs ...
+        ]
+      }
+      ```
+    - **Success Response (200 OK)**: Returns the updated company object, including its `locals` and `ticket_categories` (as a list of category IDs, based on current `to_dict_details` in `Companies` model).
+    - **Error Responses**:
+      - `400 Bad Request`: If input data is invalid (e.g., empty name/acronym when provided, invalid local structure).
+      - `404 Not Found`: If the company with the specified `company_id` does not exist.
+      - `409 Conflict`: If updating the company name results in a duplicate name, or other integrity constraint violations.
+      - `500 Internal Server Error`: If an unexpected error occurs during the update process.
+  #### Deactivate company ####
+    - **Description**:
+      Deactivates a company by setting its `deactivated_at` timestamp to the current UTC date and time.
+      This is a "soft delete" operation, meaning the company record remains in the database but is marked as inactive.
+      If the company is already deactivated, the operation is considered successful and no changes are made.
+    - **API Version**: V1
+    - **Method**: DELETE
+    - **Endpoint**: `/companies/details/{company_id}`
+    - **Parameters**:
+      - `company_id` (integer, required): The unique ID of the company to deactivate.
+    - **Headers**:
+      - **Authorization**: "Bearer <access_token>"
+      - **Permission**: `tecnico`
+    - **Success Response (204 No Content)**: Indicates successful deactivation (or that the company was already deactivated). No content is returned in the body.
+    - **Error Responses**:
+      - `404 Not Found`: If no company with the specified `company_id` exists.
+      - `500 Internal Server Error`: If an unexpected error occurs during the deactivation process.
 
 ### Tickets ###
   #### Create ticket ####
