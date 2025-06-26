@@ -13,5 +13,14 @@ from .users import (
   get_employees_with_permission,
   get_users_by_ids,
   get_employee_basic_info,
+  fetch_all_user_permissions,
+  fetch_requester_employees,
+  authentication_test,
+  validate_employee_existance,
+  fetch_current_user,
+  fetch_agents,
+  fetch_gateway_user,
+  fetch_equipment_users,
+  filtered_user_ids_by_and_search,
 )
 from .auth import create_token, validate_access_token, require_permission

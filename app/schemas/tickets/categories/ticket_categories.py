@@ -5,9 +5,14 @@ class BaseCreateTicketCategory(BaseModel):
   name: str
   description: str | None = None
   companies: list[int] | None = None
+  subcategories: list[str] | None = None
   
   @field_validator('*', mode='before')
   def sanitize_fields(cls, value) -> any:
+    if isinstance(value, list):
+      for item in value:
+        sanitize_input(item, str(type(item)))
+      return value
     return sanitize_input(value)
     
 class BaseUpdateTicketCategory(BaseModel):

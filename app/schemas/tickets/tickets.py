@@ -20,6 +20,7 @@ class BaseCreateTicket(BaseModel):
   category_id: int
   type_id: int
   request: str
+  priority_id: int | None = None
   subcategory_id: int | None = None
   assistance_type_id: int | None = None
   response: str | None = None
@@ -33,11 +34,16 @@ class BaseCreateTicket(BaseModel):
   supplier_reference: str | None = None
   ccs: list[int] | None = None
   
+  
   @field_validator('*', mode='before')
   def sanitize_fields(cls, v, info: ValidationInfo):
     field_name = info.field_name
+
+    if info.field_name == 'request':
+      print(v)
+
     if isinstance(v, str):
-      if field_name not in ['suppliers', 'equipments', 'ccs']:
+      if field_name not in ['suppliers', 'equipments', 'ccs', 'request']:
         return sanitize_input(v, allow_special_chars=True) if v is not None else None
     return v
 
@@ -49,6 +55,7 @@ class BaseCreateTicket(BaseModel):
     category_id: int = Form(...),
     type_id: int = Form(...),
     request: str = Form(...),
+    priority_id: int | None = Form(None),
     subcategory_id: int | None = Form(None),
     assistance_type_id: int | None = Form(None),
     response: str | None = Form(None),
@@ -111,6 +118,7 @@ class BaseCreateTicket(BaseModel):
       category_id=category_id,
       type_id=type_id,
       request=request,
+      priority_id=priority_id,
       subcategory_id=subcategory_id,
       assistance_type_id=assistance_type_id,
       response=response,

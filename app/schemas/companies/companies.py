@@ -4,12 +4,12 @@ from app.utils.helpers.client_inputs import sanitize_input
 class LocalsSchema(BaseModel):
   name: str
   short: str
-  background: str
-  text: str
+  background: str | None = None
+  text: str | None = None
   
-  @field_validator('*', mode="before")
-  def sanitize_fields(cls, v):
-    return sanitize_input(v)
+  # @field_validator('*', mode="before")
+  # def sanitize_fields(cls, v):
+  #   return sanitize_input(v)
 
 class CompanyCreation(BaseModel):
   name: str

@@ -31,6 +31,35 @@ class TicketCategories(Model):
       "name": self.name,
       "description": self.description,
       "active": self.active,
+      "companies": [company.to_dict() for company in related_companies],
+      "subcategories": [sub.to_dict() for sub in related_subcategories]
+    }
+
+  async def to_dict_pagination(self) -> dict:
+    """
+    Serializa o TicketCategory para um dicionário,
+    incluindo associações com empresas e subcategorias ativas. 
+    """
+    related_companies = await self.companies.all()
+    related_subcategories = await self.category_subcategories.filter(active=True).all()
+
+    return {
+      "id": self.id,
+      "name": self.name,
+      "description": self.description,
+      "active": self.active,
       "companies": [{"id": company.id, "name": company.name} for company in related_companies],
       "subcategories": [sub.to_dict() for sub in related_subcategories]
     }
+  
+  def  to_dict_companies(self) -> dict:
+    """
+    Serealiza on TicketCategory para um dicionário,
+    Para ser mostrado no get das Empresas
+    """
+    return {
+      "id": self.id,
+      "name": self.name,
+      "description": self.description,
+      "active": self.active
+    } 

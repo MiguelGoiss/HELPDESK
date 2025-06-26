@@ -12,4 +12,8 @@ from .ticket_helpers import (
   _handle_update_logging,
   _handle_update_notifications,
   _apply_filters,
+  _fetch_attachment,
+  _construct_file_path,
+  _check_file_existance,
+  _determine_media_type,
 )

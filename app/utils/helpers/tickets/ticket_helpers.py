@@ -16,6 +16,7 @@ from ..filtering import (
   _apply_ordering, 
 )
 import logging
+import mimetypes
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +47,7 @@ UPLOAD_DIRECTORY = Path(TICKET_FILES_PATH)
 # Garante que a pasta existe
 UPLOAD_DIRECTORY.mkdir(parents=True, exist_ok=True)
 # Extensões de ficheiros permitidas
-ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".pdf", ".msg"}
+ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".pdf", ".msg", ".xlsx", ".eml"}
 # --- Fim da Configuração ---
 
 def _validate_file(file: UploadFile):
@@ -120,7 +121,7 @@ async def _log_file_addition(ticket: Tickets, attachment_records_data: list[dict
     """Adiciona o log ao adicionar os ficheiros com sucesso."""
     if not attachment_records_data:
       return
-    
+    print(current_user)
     if ticket.status_id == 1:
       actor_id = ticket.created_by_id or ticket.requester_id # prioritiza o created_by_id ao requester
     else:
@@ -148,7 +149,6 @@ async def _handle_file_uploads(ticket: Tickets, files: list[UploadFile], current
 
   attachment_records_data = []
   saved_file_paths = []
-
   try:
     # Processa e guarda cada ficheiro
     for file in files:
@@ -164,7 +164,6 @@ async def _handle_file_uploads(ticket: Tickets, files: list[UploadFile], current
 
       # Prepara os dados para a DB
       attachment_data = _prepare_attachment_data(ticket, unique_filename, file.filename, file_ext, current_user)
-      print("here")
       attachment_records_data.append(attachment_data)
 
     # Bulk create dos registos de ficheiros
@@ -210,11 +209,12 @@ def _authorize_ticket_update(ticket: Tickets, current_user: dict):
 
 def _prepare_update_data(ticket_data: dict) -> tuple[dict, list[int] | None]:
   """Prepara os dados de atualização, removendo campos protegidos e extraindo as FKs."""
-  update_data = ticket_data.dict(exclude_unset=True) # Alterações para campos diretos
+  update_data = ticket_data.dict(exclude_unset=True, exclude_none=True) # Alterações para campos diretos
   ccs_ids_to_update = update_data.pop('ccs')  # Alterações para fk
   # Se for preciso adicionar fk, é preciso fazer pop e devolver no return para a função mãe 
   # Para poder ser tratado posteriormente
-
+  if 'prevention_date' in update_data:
+    update_data['prevention_date'] = update_data['prevention_date'].astimezone(timezone.utc).isoformat()
   # Previne alterar campos que não devem ser alterados via update
   protected_fields = ['id', 'uid', 'created_at', 'created_by_id']
   for field in protected_fields:
@@ -239,8 +239,7 @@ def _handle_automatic_status_update(ticket: Tickets, update_data: dict, original
   agent_id_in_update = 'agent_id' in update_data
   new_agent_id_value = update_data.get('agent_id', None)
 
-  print(original_agent_id_value, update_data['agent_id'])    
-  if agent_id_in_update and new_agent_id_value is not None and original_agent_id_value is None:
+  if agent_id_in_update and new_agent_id_value is not None and original_agent_id_value is None and not update_data['status_id']:
     # Agente passou de None -> Atribuido altera o estado para "In Progress" (2)
     ticket.status_id = 2
     
@@ -256,7 +255,7 @@ def _handle_closed_at_update(ticket: Tickets, old_ticket_details: dict):
   # Alteração do estado para "Closed" (7)
   if final_status_id == 7 and original_status_id != 7:
     if not ticket.closed_at: # Insere "closed_at" apenas se já não estiver inserido
-      ticket.closed_at = datetime.now(timezone.utc)
+      ticket.closed_at = datetime.now(timezone.utc).isoformat()
   # Alteração de estado de "Closed" (7) para "Reopen" (8)
   elif final_status_id != 7 and original_status_id == 7:
     ticket.closed_at = None # Limpa o "closed_at"
@@ -378,6 +377,7 @@ ALLOWED_AND_FILTER_FIELDS: set[str] = {
   'supplier_reference',
   'spent_time',
   'prevention_date',
+  'prevention_date__isnull',
   'created_at',
   'closed_at',
   # Foreign Key IDs
@@ -480,106 +480,102 @@ def _apply_filters(
   
   return queryset
 
-# async def _apply_and_filters(queryset: QuerySet, filters_dict: dict[str, any]) -> QuerySet:
-#   """
-#   Aplica filtros AND a um queryset de Tickets, validando os campos e tratando tipos de dados.
+# --- Fim dos helpers para o fetch dos tickets ---
 
-#   Args:
-#     queryset: O queryset do Tortoise ao qual aplicar os filtros.
-#     filters_dict: Um dicionário onde as chaves são nomes de campos (ou campos com sufixos _after/_before)
-#                   e os valores são os valores a filtrar.
+async def _fetch_attachment(uid: str, filename: str) -> TicketAttachments:
+  """
+  Obtém um registo específico de TicketAttachment da base de dados.
 
-#   Returns:
-#     O queryset com os filtros aplicados.
+  Args:
+    uid: O UID do ticket ao qual o anexo pertence.
+    filename: O nome do ficheiro como está guardado no disco do servidor
+              (corresponde a TicketAttachments.filename).
 
-#   Raises:
-#     CustomError: Se um campo de filtro for inválido ou um formato de data for inválido.
-#   """
-#   valid_filters = {}
+  Returns:
+    A instância ORM TicketAttachments se encontrada.
 
-#   if isinstance(filters_dict, str):
-#     filters_dict = json.loads(filters_dict)
+  Raises:
+    CustomError: Se o registo do anexo não for encontrado na base de dados
+                 ou se ocorrer qualquer outro erro na base de dados.
+  """
+  try:
+    attachment = await TicketAttachments.filter(
+      ticket__uid=uid,
+      filename=filename  # This 'filename' is the one stored on disk
+    ).first()
 
-#   for field, value in filters_dict.items():
-#     # --- Filtro de datas ---
-#     if field.endswith('_after'):
-#       base_field = field[:-6] # Remove o '_after'
-#       if base_field in DATE_FIELDS:
-#         try:
-#           start_date = datetime.fromisoformat(str(value)).date()
-#           filter_key = f"{base_field}__gte"
-#           valid_filters[filter_key] = datetime.combine(start_date, datetime.min.time())
-#         except ValueError:
-#           raise CustomError(400, "Formato de data inválido", f"Formato inválido para '{field}'. Usar YYYY-MM-DD.")
-#       else:
-#         raise CustomError(400, "Filtro inválido", f"Não é possível filtrar por data no campo '{base_field}'.")
-#     elif field.endswith('_before'):
-#       base_field = field[:-7] # Remove o '_before'
-#       if base_field in DATE_FIELDS:
-#         try:
-#           end_date = datetime.fromisoformat(str(value)).date()
-#           next_day_start = datetime.combine(end_date + timedelta(days=1), datetime.min.time())
-#           filter_key = f"{base_field}__lt"
-#           valid_filters[filter_key] = next_day_start
-#         except ValueError:
-#           raise CustomError(400, "Formato de data inválido", f"Formato inválido para '{field}'. Usar YYYY-MM-DD.")
-#       else:
-#         raise CustomError(400, "Filtro inválido", f"Não é possível filtrar por data no campo '{base_field}'.")
-#     # --- Filtro de campos que não são datas ---
-#     elif field in ALLOWED_AND_FILTER_FIELDS:
-#       if isinstance(value, str) and not field.endswith('_id'):
-#         filter_key = f"{field}__icontains"
-#         valid_filters[filter_key] = value
-#       elif isinstance(value, list):
-#         filter_key = f"{field}__in"
-#         valid_filters[filter_key] = value
-#       else:
-#         valid_filters[field] = value
-#     else:
-#       raise CustomError(400, "Filtro inválido", f"Não é possível filtrar pelo campo '{field}'.")
+    if not attachment:
+      logger.warning(f"Attachment '{filename}' not found for ticket UID '{uid}'.")
+      raise CustomError(404, "Anexo não encontrado.")
 
-#   if valid_filters:
-#     return queryset.filter(**valid_filters)
-#   return queryset
+    return attachment
 
-# def _apply_or_search(queryset: QuerySet, search: str | None) -> QuerySet:
-#   """Applies OR search conditions across predefined fields."""
-#   if not search:
-#     return queryset
+  except Exception as e:
+    logger.error(f"Erro a obter o anexo '{filename}' para o ticket uid {uid}: {e}", exc_info=True)
+    raise CustomError(500, "Ocorreu um erro a obter o anexo", str(e)) from e
 
-#   search_conditions = []
-#   for field in DEFAULT_OR_SEARCH_FIELDS:
-#     if field == 'id' and search.isdigit():
-#       search_conditions.append(Q(id=int(search)))
-#     else:
-#       # Ensure the field is valid for icontains if it's not 'id'
-#       # (Tortoise might handle this, but explicit checks can be safer)
-#       filter_key = f"{field}__icontains"
-#       search_conditions.append(Q(**{filter_key: search}))
+UPLOAD_BASE_PATH = "uploads/ticket_attachments"
 
-#   if search_conditions:
-#     # Combina todas as condições (OR)
-#     combined_condition = reduce(or_, search_conditions)
-#     queryset = queryset.filter(combined_condition)
-#   else:
-#     # Should not happen if search is not None and DEFAULT_OR_SEARCH_FIELDS is not empty,
-#     # but good practice to handle. Could also return queryset.none() if no match is desired.
-#     pass # Or: queryset = queryset.none() if no conditions generated means no results
-#   return queryset
+def _construct_file_path(attachment: TicketAttachments) -> Path:
+  """
+  Constrói o caminho completo do sistema de ficheiros para um determinado anexo de ticket.
 
-# def _apply_ordering(queryset: QuerySet, order_by: str | None) -> QuerySet:
-#   """Applies ordering to the queryset, validating the field and using a default."""
-#   if order_by:
-#     order_field_name = order_by.lstrip('-') # Retira o '-' se houver
-#     if order_field_name in ALLOWED_ORDER_FIELDS:
-#       queryset = queryset.order_by(order_by)
-#     else:
-#       raise CustomError(400, "Ordenação inválida", f"Ordenação pelo campo '{order_field_name}' não é permitida.")
-#   else:
-#     # Por defeito o order é pela data de criação
-#     queryset = queryset.order_by('-created_at')
-#   return queryset
+  O caminho é determinado pelo UPLOAD_BASE_PATH e por uma estrutura de subdiretórios
+  baseada na data de criação do anexo (AAAA/MM/DD).
 
-# --- Fim dos helpers do fetch dos tickets ---
+  Args:
+    attachment: A instância ORM TicketAttachments.
 
+  Returns:
+    Um objeto Path que representa o caminho absoluto para o ficheiro no disco.
+  """
+  created_at_ts = attachment.created_at
+  year = str(created_at_ts.year)
+  month = f"{created_at_ts.month:02d}"
+  day = f"{created_at_ts.day:02d}"
+  
+  filename_on_disk = attachment.filename 
+
+  full_file_path = os.path.join(UPLOAD_BASE_PATH, year, month, day, filename_on_disk)
+  return Path(full_file_path)
+
+def _check_file_existance(file_path: Path, attachment: TicketAttachments) -> None:
+  """
+  Verifica se um ficheiro existe fisicamente no caminho especificado no disco.
+
+  Se o ficheiro não existir, regista um erro e levanta um CustomError,
+  indicando uma potencial inconsistência entre o registo da base de dados e
+  o sistema de ficheiros.
+
+  Args:
+    file_path: O objeto Path que representa a localização do ficheiro.
+    attachment: A instância ORM TicketAttachments, usada para contexto de log
+                caso o ficheiro não seja encontrado.
+  Raises:
+    CustomError: Se o ficheiro não existir no caminho fornecido.
+  """
+  if not os.path.exists(file_path):
+    logger.error(
+      f"File record exists in DB but file not found on disk: {file_path} "
+      f"for attachment ID {attachment.id}, ticket UID {attachment.ticket_id}."
+    )
+    raise CustomError(500, "Ficheiro não disponível no servidor.")
+  return
+
+def _determine_media_type(file_path: Path) -> str:
+  """
+  Determina o tipo MIME (media type) de um ficheiro com base na sua extensão.
+
+  Se o tipo MIME não puder ser adivinhado, assume 'application/octet-stream' como padrão.
+
+  Args:
+    file_path: O objeto Path que representa a localização do ficheiro.
+
+  Returns:
+    Uma string que representa o tipo MIME adivinhado do ficheiro.
+  """
+  media_type, _ = mimetypes.guess_type(file_path)
+  if media_type is None:
+    media_type = "application/octet-stream" 
+  return media_type  
 

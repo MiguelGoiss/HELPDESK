@@ -5,4 +5,5 @@ from .tickets import (
   update_ticket_details,
   fetch_preset_counts,
   fetch_ticket_logs,
+  fetch_ticket_file,
 )

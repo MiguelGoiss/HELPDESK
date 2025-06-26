@@ -10,3 +10,11 @@ class TicketStatuses(Model):
   class Meta:
     table = "ticket_statuses"
   
+  def to_dict(self):
+    return {
+      "id": self.id,
+      "name": self.name,
+      "color": self.color,
+      "text_color": self.text_color,
+    }
+  

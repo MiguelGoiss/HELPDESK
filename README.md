@@ -1,7 +1,6 @@
-# APLICAÇÃO PARA O VACATION #
-  This API is built using FastAPI. 
-  It is integrated and comunicates directly with Aurora.
-  The objective of this application is to ease the work of the sellers from vacation club for easy data transfer, maintainability and reminder of new costumers.
+# API IT HELPDESK #
+  This API is built using FastAPI.
+  The objective of this application is to ease the work of the IT department AFAVIAS.
 
 ## Index ##
   - [Installation] (#installation)
@@ -24,7 +23,7 @@
     Input is sanitized by framework mechanisms to prevent common injection attacks.
   - **API Version**: V1
   - **Method**: POST
-  - **Endpoint**: `/users`
+  - **Endpoint**: `/employees`
   - **Headers**:
     - **Authorization**: "Bearer <access_token>"
   - **Request**:
@@ -68,7 +67,7 @@
         - *Pagination*: Results are paginated. The response includes links (next_page, previous_page) to navigate through pages, preserving any applied search, filter, and ordering parameters.
     - **API Version**: V1
     - **Method**: GET
-    - **Endpoint**: `/users`
+    - **Endpoint**: `/employees`
     - **Parameters**:
       - `page` (integer, optional, default: 1): The page number to retrieve (must be >= 1).
       - `page_size` (integer, optional, default: 10): The number of users to return per page (must be >= 1 and <= 100).
@@ -85,7 +84,7 @@
       It raises a 404 error if no employee with the given id is found.
     - **API Version**: V1
     - **Method**: GET
-    - **Endpoint**: `/users/details/{id}`
+    - **Endpoint**: `/employees/details/{id}`
     - **Headers**:
       - **Authorization**: "Bearer <access_token>"
   
@@ -99,7 +98,7 @@
       Only the fields intended for modification need to be sent in the request body. All changes are logged.
     - **API Version**: V1
     - **Method**: PUT
-    - **Endpoint**: `/users/details/{id}`
+    - **Endpoint**: `/employees/details/{id}`
     - **Headers**:
       - **Authorization**: "Bearer <access_token>"
     - **Request**:
@@ -142,7 +141,7 @@
       The endpoint first verifies if the user exists; if not found, it returns a 404 error.
     - **API Version**: V1
     - **Method**: DELETE
-    - **Endpoint**: `/users/details/{id}`
+    - **Endpoint**: `/employees/details/{id}`
     - **Headers**:
       - **Authorization**: "Bearer <access_token>"
   
@@ -152,7 +151,7 @@
       If the token is valid and belongs to an active user, it returns the user's detailed information; otherwise, it raises appropriate errors (401 for invalid/expired tokens, 500 for internal issues).
     - **API Version**: V1
     - **Method**: GET
-    - **Endpoint**: `/users/me`
+    - **Endpoint**: `/employees/me`
     - **Headers**:
       - **Authorization**: "Bearer <access_token>"
 
@@ -164,7 +163,7 @@
       If the username is not found or the password does not match, a 401 Unauthorized error is returned.
     - **API Version**: V1
     - **Method**: POST
-    - **Endpoint**: `/users/authenticate`
+    - **Endpoint**: `/employees/authenticate`
     - **Request**:
       ```JSON
         {
@@ -181,7 +180,7 @@
       *IMPORTANT!* This request will return the user details, which will be required to proceed with the password recovery.
     - **API Version**: V1
     - **Method**: POST
-    - **Endpoint**: `/users/recovery-request`
+    - **Endpoint**: `/employees/recovery-request`
     - **Request**:
       ```JSON
         {
@@ -200,7 +199,7 @@
       On successful verification, it returns the user's detailed information.
     - **API Version**: V1
     - **Method**: POST
-    - **Endpoint**: `/users/verify-code`
+    - **Endpoint**: `/employees/verify-code`
     - **Request**:
       ```JSON
         {
@@ -213,12 +212,12 @@
     - **Description**:
       This endpoint finalizes the password recovery process by setting a new password for the user.
       This endpoint requires the user's id, the verification code received via email, and the desired new_password.
-      It first verifies the provided id and code using the same logic as the /users/verify-code endpoint (checking for existence, validity, expiration, and attempts).
+      It first verifies the provided id and code using the same logic as the /employees/verify-code endpoint (checking for existence, validity, expiration, and attempts).
       If the verification is successful, the new password is securely hashed and updated in the user's record.
       The recovery token used for this process is then invalidated to prevent reuse.
     - **API Version**: V1
     - **Method**: PUT
-    - **Endpoint**: `/users/password-recovery`
+    - **Endpoint**: `/employees/password-recovery`
     - **Request**:
       ```JSON
         {
@@ -234,7 +233,7 @@
       For each matching employee, it returns their basic details (id, first_name, last_name, full_name), their primary department, company, local, and a list of their associated public contacts.
     - **API Version**: V1
     - **Method**: GET
-    - **Endpoint**: `/users/permission/{permission_id}`
+    - **Endpoint**: `/employees/permission/{permission_id}`
   #### Refresh access token ####
     - **Description**:
       Generates a new access token using a valid refresh token. 
@@ -243,9 +242,58 @@
       If valid, it issues a new access token with a standard expiration time (30 minutes).
     - **API Version**: V1
     - **Method**: GET
-    - **Endpoint**: `/users/refresh-token`
+    - **Endpoint**: `/employees/refresh-token`
     - **Headers**:
       - **X-Refresh-Token**: "string"
+  #### Fetch employee permissions ####
+    - **Description**:
+      Retrieves a list with all the permissions 
+      The response includes a list of permission objects, each containing the permission's id, name, description.
+    - **API Version**: V1
+    - **Method**: GET
+    - **Endpoint**: `/employees/permissions`
+    - **Headers**:
+      - **Authorization**: "Bearer <access_token>"
+      - **Permission**: `tecnico`
+  #### Fetch employee requesters ####
+    - **Description**:
+      Retrieves a list of active employees who are suitable to be requesters for tickets.
+      This endpoint can optionally filter the list of employees by a specific `company_id`.
+      If a `company_id` is provided, an employee will be included if their primary `company_id` matches, or if the `company_id` is found within their `companies` many-to-many relationship.
+      Each employee in the returned list is serialized to include basic information such as ID, name, department, company, and local.
+    - **API Version**: V1
+    - **Method**: GET
+    - **Endpoint**: `/employees/requesters`
+    - **Parameters**:
+      - `company_id` (integer, optional): The ID of the company to filter requesters by. If not provided, requesters from all companies are returned.
+    - **Headers**:
+      - **Authorization**: "Bearer <access_token>"
+    - **Success Response (200 OK)**:
+      ```JSON
+      {
+        "count": 1,
+        "requesters": [
+          {
+            "id": 1,
+            "first_name": "John",
+            "last_name": "Doe",
+            "full_name": "John Doe",
+            "department": {/*... Department data ...*/},
+            "local": {/*... Locals data ...*/}
+          },
+        ]
+      }
+      ```
+    - **Error Responses**:
+      - `500 Internal Server Error`: If an unexpected error occurs during data retrieval.
+  #### Fetch employee agents ####
+    - **Description**:
+      Retrieves a list of active employees who are suitable to be agents for tickets.
+    - **API Version**: V1
+    - **Method**: GET
+    - **Endpoint**: `/employees/agents`
+    - **Headers**:
+      - **Authorization**: "Bearer <access_token>"
 
 ### Companies ###
   #### Fetch companies ####
@@ -320,6 +368,39 @@
       - `400 Bad Request`: If required fields are missing or data is invalid.
       - `409 Conflict`: If a company with the same name already exists, or other integrity constraint violations.
       - `500 Internal Server Error`: If an unexpected error occurs during creation.
+
+  #### Fetch companies for management ####
+    - **Description**:
+      Retrieves a paginated list of companies. This endpoint supports flexible searching, filtering, and ordering.
+        - *General Search*: A broad, case-insensitive search (search parameter) can be performed across the company's details using OR logic, Allowed fields for filtering include:
+          - `id`,
+          - `name`,
+          - `acronym`,
+          - `departments__name`.
+        - *Specific Filtering*: Precise, case-insensitive filtering (and_filters parameter) can be applied to specific fields using AND logic. Allowed fields for filtering include: 
+          - `id`,
+          - `name`,
+          - `acronym`,
+          - `departments__id`,
+          - `departments__name`.
+        - *Ordering*: Results can be ordered by various fields (order_by parameter). Prefix the field name with a hyphen (-) for descending order. Allowed fields for ordering include:
+          - `id`,
+          - `name`,
+          - `acronym`.
+        - *Pagination*: Results are paginated. The response includes links (next_page, previous_page) to navigate through pages, preserving any applied search, filter, and ordering parameters.
+    - **API Version**: V1
+    - **Method**: GET
+    - **Endpoint**: `/companies/details`
+    - **Parameters**:
+      - `page` (integer, optional, default: 1): The page number to retrieve (must be >= 1).
+      - `page_size` (integer, optional, default: 100): The number of users to return per page (must be >= 1 and <= 100).
+      - `search` (string, optional): A general search term applied across default fields (first_name, last_name, full_name, employee_num) with OR logic.
+      - `and_filters` (JSONString, optional): Specific filters applied with AND logic. Pass as query parameters like {"field_name": "value"}. Example: ?and_filters{"departments__name":"DTI", "local_id": 5}. Uses case-insensitive matching. See allowed fields in the description.
+      - `order_by` (string, optional): Field name to sort results by. Prefix with - for descending order (e.g., -id). See allowed fields in the description.
+    - **Headers**:
+      - **Authorization**: "Bearer <access_token>"
+      - **Permission**: `tecnico`
+
   #### Fetch company by ID ####
     - **Description**:
       Retrieves detailed information for a specific company identified by its `company_id`.
@@ -428,6 +509,208 @@
     - **Error Responses**:
       - `404 Not Found`: If no company with the specified `company_id` exists.
       - `500 Internal Server Error`: If an unexpected error occurs during the deactivation process.
+
+### Departments ###
+  #### Create department ####
+  - **Description**: 
+    Creates a new department. This endpoint allows for the optional association of the new department with existing companies.
+    The operation is performed within a database transaction to ensure data integrity.
+    - *Validation*: The department name must be provided and be unique. If `company_ids` are provided, they must be valid and exist.
+  - **API Version**: V1
+  - **Method**: POST
+  - **Endpoint**: `/departments`
+  - **Headers**:
+    - **Authorization**: "Bearer <access_token>"
+    - **Permission**: `tecnico`
+  - **Request**:
+    ```JSON
+    {
+      "name": "string", // Required, must be unique
+      "company_ids": [  // Optional: List of existing Company IDs to associate
+        "integer",
+        ...
+      ]
+    }
+    ```
+  - **Success Response (201 Created)**: Returns the newly created department object, including its ID, name, and any associated companies.
+    ```JSON
+    {
+      "id": "integer",
+      "name": "string",
+      "deactivated_at": null, // Will be null on creation
+      "companies": [
+        {
+          "id": "integer",
+          "name": "string",
+          "acronym": "string"
+          // ... other relevant company fields ...
+        },
+        // ... more associated companies ...
+      ]
+    }
+    ```
+  - **Error Responses**:
+    - `400 Bad Request`: If the `name` is missing or `company_ids` is not a list.
+    - `404 Not Found`: If any of the `company_ids` provided for association do not exist.
+    - `409 Conflict`: If a department with the same `name` already exists.
+    - `500 Internal Server Error`: If an unexpected error occurs during creation.
+
+  #### Fetch departments ####
+  - **Description**:
+    Retrieves a list of all departments. Each department in the list will include its associated companies.
+  - **API Version**: V1
+  - **Method**: GET
+  - **Endpoint**: `/departments`
+  - **Headers**:
+    - **Authorization**: "Bearer <access_token>"
+  - **Success Response (200 OK)**:
+    ```JSON
+    [
+      {
+        "id": "integer",
+        "name": "string",
+        "deactivated_at": "string or null (datetime)",
+        "companies": [
+          {
+            "id": "integer",
+            "name": "string",
+            "acronym": "string"
+            // ... other relevant company fields ...
+          },
+          // ... more associated companies ...
+        ]
+      },
+      // ... more department objects ...
+    ]
+    ```
+  - **Error Responses**:
+    - `500 Internal Server Error`: If an unexpected error occurs during data retrieval.
+
+  #### Fetch departments for management ####
+    - **Description**:
+      Retrieves a paginated list of departments. This endpoint supports flexible searching, filtering, and ordering.
+        - *General Search*: A broad, case-insensitive search (search parameter) can be performed across the departments details using OR logic, Allowed fields for filtering include:
+          - `id`,
+          - `name`.
+        - *Specific Filtering*: Precise, case-insensitive filtering (and_filters parameter) can be applied to specific fields using AND logic. Allowed fields for filtering include: 
+          - `id`,
+          - `name`.
+        - *Ordering*: Results can be ordered by various fields (order_by parameter). Prefix the field name with a hyphen (-) for descending order. Allowed fields for ordering include:
+          - `id`,
+          - `name`.
+        - *Pagination*: Results are paginated. The response includes links (next_page, previous_page) to navigate through pages, preserving any applied search, filter, and ordering parameters.
+    - **API Version**: V1
+    - **Method**: GET
+    - **Endpoint**: `/departments/details`
+    - **Parameters**:
+      - `page` (integer, optional, default: 1): The page number to retrieve (must be >= 1).
+      - `page_size` (integer, optional, default: 100): The number of users to return per page (must be >= 1 and <= 100).
+      - `search` (string, optional): A general search term applied across default fields (first_name, last_name, full_name, employee_num) with OR logic.
+      - `and_filters` (JSONString, optional): Specific filters applied with AND logic. Pass as query parameters like {"field_name": "value"}. Example: ?and_filters{"departments__name":"DTI", "local_id": 5}. Uses case-insensitive matching. See allowed fields in the description.
+      - `order_by` (string, optional): Field name to sort results by. Prefix with - for descending order (e.g., -id). See allowed fields in the description.
+    - **Headers**:
+      - **Authorization**: "Bearer <access_token>"
+      - **Permission**: `tecnico`
+
+  #### Fetch department by ID ####
+  - **Description**:
+    Retrieves detailed information for a specific department identified by its `department_id`.
+    The response includes the department's core details and a list of its associated companies.
+  - **API Version**: V1
+  - **Method**: GET
+  - **Endpoint**: `/departments/details/{department_id}`
+  - **Parameters**:
+    - `department_id` (integer, required): The unique ID of the department to retrieve.
+  - **Headers**:
+    - **Authorization**: "Bearer <access_token>"
+  - **Success Response (200 OK)**:
+    ```JSON
+    {
+      "id": "integer",
+      "name": "string",
+      "deactivated_at": "string or null (datetime)",
+      "companies": [
+        {
+          "id": "integer",
+          "name": "string",
+          "acronym": "string"
+          // ... other relevant company fields ...
+        },
+        // ... more associated companies ...
+      ]
+    }
+    ```
+  - **Error Responses**:
+    - `404 Not Found`: If no department with the specified `department_id` exists.
+    - `500 Internal Server Error`: If an unexpected error occurs during data retrieval.
+
+  #### Update department details ####
+  - **Description**:
+    Updates the details of an existing department identified by its `department_id`.
+    This endpoint allows for modification of the department's `name` and synchronization of its associated `companies`.
+    All database operations are performed within a transaction to ensure atomicity.
+    - **Name**: If provided, cannot be empty and must be unique.
+    - **Company Associations**: If the `company_ids` array is provided, it will synchronize the department's associations with companies. Associations will be created for new IDs and removed for IDs not in the list.
+  - **API Version**: V1
+  - **Method**: PUT
+  - **Endpoint**: `/departments/details/{department_id}`
+  - **Parameters**:
+    - `department_id` (integer, required): The unique ID of the department to update.
+  - **Headers**:
+    - **Authorization**: "Bearer <access_token>"
+    - **Permission**: `tecnico`
+  - **Request Body**:
+    ```JSON
+    {
+      "name": "string", // Optional, cannot be empty if provided
+      "company_ids": [  // Optional: Full list of company IDs to synchronize.
+        "integer",
+        ...
+      ]
+    }
+    ```
+  - **Success Response (200 OK)**: Returns the updated department object, including its `name` and synchronized `companies`.
+    ```JSON
+    {
+      "id": "integer",
+      "name": "string",
+      "deactivated_at": "string or null (datetime)",
+      "companies": [
+        {
+          "id": "integer",
+          "name": "string",
+          "acronym": "string"
+          // ... other relevant company fields ...
+        },
+        // ... more associated companies ...
+      ]
+    }
+    ```
+  - **Error Responses**:
+    - `400 Bad Request`: If input data is invalid (e.g., empty name when provided, `company_ids` not a list).
+    - `404 Not Found`: If the department with `department_id` or any of the specified `company_ids` do not exist.
+    - `409 Conflict`: If updating the department `name` results in a duplicate.
+    - `500 Internal Server Error`: If an unexpected error occurs during the update process.
+
+  #### Deactivate department ####
+  - **Description**:
+    Deactivates a department by setting its `deactivated_at` timestamp to the current UTC date and time.
+    This is a "soft delete" operation. The department record remains but is marked inactive.
+    The operation will fail if the department has any active employees associated with it.
+    If the department is already deactivated, the operation is considered successful and no changes are made.
+  - **API Version**: V1
+  - **Method**: DELETE
+  - **Endpoint**: `/departments/details/{department_id}`
+  - **Parameters**:
+    - `department_id` (integer, required): The unique ID of the department to deactivate.
+  - **Headers**:
+    - **Authorization**: "Bearer <access_token>"
+    - **Permission**: `tecnico`
+  - **Success Response (204 No Content)**: Indicates successful deactivation (or that it was already deactivated). No content is returned.
+  - **Error Responses**:
+    - `404 Not Found`: If no department with the specified `department_id` exists.
+    - `409 Conflict`: If the department has active employees associated with it and cannot be deactivated.
+    - `500 Internal Server Error`: If an unexpected error occurs during deactivation.
 
 ### Tickets ###
   #### Create ticket ####
@@ -579,6 +862,14 @@
     - **Headers**:
       - **Authorization**: "Bearer <access_token>"
       - **Permission**: `tecnico`
+  #### Ticket files ####
+    - **Description**:
+      Retrieves a file requested by the client
+    - **API Version**: V1
+    - **Method**: GET
+    - **Endpoint**: `tickets/details/{uid}/files/{filename}`
+
+  
 ### Ticket Categories ###
   #### Create ticket category ####
   - **Description**:

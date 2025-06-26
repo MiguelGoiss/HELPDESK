@@ -6,6 +6,14 @@ class Companies(Model):
   name = fields.CharField(max_length=55, null=True)
   acronym = fields.CharField(max_length=7)
   deactivated_at = fields.DatetimeField(null=True)
+
+  departments = fields.ManyToManyField(
+    "helpdesk_models.Departments",
+    related_name="companies",
+    through="companies_departments",
+    forward_key="department_id", # Field in Companies_Departments pointing to Departments
+    backward_key="company_id"    # Field in Companies_Departments pointing to Companies
+  )
   
   class Meta:
     table = "companies"
@@ -16,14 +24,25 @@ class Companies(Model):
       "name": self.name,
       "acronym": self.acronym
     }
-  
-  async def to_dict_related(self):
-    company_locals = await self.company_local_relations.all()
+
+  async def to_dict_pagination(self):
+    company_departments = await self.departments.all() # Fetch related departments
     return {
       "id": self.id,
       "name": self.name,
       "acronym": self.acronym,
-      "locals": [local.to_dict() for local in company_locals]
+      "departments": [department.to_dict() for department in company_departments] # Serialize departments
+    }
+  
+  async def to_dict_related(self):
+    company_locals = await self.company_local_relations.all()
+    company_departments = await self.departments.all() # Fetch related departments
+    return {
+      "id": self.id,
+      "name": self.name,
+      "acronym": self.acronym,
+      "locals": [local.to_dict() for local in company_locals],
+      "departments": [department.to_dict() for department in company_departments] # Serialize departments
     }
   
   async def to_dict_details(self):
@@ -31,13 +50,9 @@ class Companies(Model):
     Serializa os detalhes de uma empresa com os locais e categorias de ticket associadas.
     """
     company_locals_orm = await self.company_local_relations.all()
-    company_ticket_category_relations = await self.company_ticket_categories.all().prefetch_related('ticket_category')
+    company_ticket_category_relations = await self.ticket_categories.all()
+    ticket_categories_list = [category.to_dict_companies() for category in company_ticket_category_relations]
     
-    ticket_categories_list = []
-    for relation in company_ticket_category_relations:
-      category = relation.ticket_category 
-      ticket_categories_list.append(category.id)
-      
     return {
       "id": self.id,
       "name": self.name,

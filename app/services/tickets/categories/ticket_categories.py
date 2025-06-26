@@ -35,7 +35,7 @@ async def create_ticket_category(category_data: dict) -> TicketCategories:
     new_category = await TicketCategories.create(**category_data)
 
     if company_ids:
-      companies_to_add = await Companies.filter(id__in=company_ids, active=True).all()
+      companies_to_add = await Companies.filter(id__in=company_ids, deactivated_at__isnull=True).all()
       await new_category.companies.add(*companies_to_add)
     return new_category
 
@@ -83,7 +83,6 @@ async def fetch_ticket_categories(
   try:
     queryset = TicketCategories.filter(active=True)
 
-    
     # Aplicar filtros AND
     queryset = _apply_filters(queryset, and_filters, search, order_by)
 
@@ -218,7 +217,7 @@ async def update_ticket_category(category_id: int, category_data: dict) -> Ticke
     if company_ids is not None: # "is not None" para permitir enviar uma lista vazia para remover todas as empresas
       await category_to_update.companies.clear() # Remove todas as associações existentes
       if company_ids: # Se a lista não estiver vazia, adiciona as novas
-        companies_to_add = await Companies.filter(id__in=company_ids, active=True).all()
+        companies_to_add = await Companies.filter(id__in=company_ids, deactivated_at__isnull=True).all()
         if companies_to_add:
           await category_to_update.companies.add(*companies_to_add)
 

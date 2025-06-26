@@ -10,4 +10,12 @@ from .users import (
   handle_password_recovery,
   handle_get_employees_with_permission,
   handle_access_token_creation,
+  handle_fetch_all_user_permissions,
+  handle_fetch_requester_employees,
+  handle_authentication_test,
+  handle_validate_employee_existance,
+  handle_fetch_current_user,
+  handle_fetch_agents,
+  test_user_gateway,
+  handle_fetch_equipment_users,
 )

@@ -3,7 +3,6 @@ import logging
 from app.database.models.helpdesk import (
   Companies, Locals, TicketCategories, TicketCategories_Companies
 )
-
 from app.utils.errors.exceptions import CustomError
 from tortoise.transactions import in_transaction
 from tortoise.exceptions import IntegrityError, DoesNotExist
@@ -14,6 +13,13 @@ from app.utils.helpers.companies.company_helpers import (
   _manage_locals_for_update,
   _manage_ticket_categories_for_update,
 )
+from ...utils.helpers.filtering import (
+  _apply_and_filters,
+  _apply_or_search,
+  _apply_ordering, 
+)
+from app.utils.helpers.paginate import paginate
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +100,7 @@ async def fetch_companies() -> list[dict]:
     # Prefetch related locals to avoid N+1 queries.
     companies_orm = await Companies.filter(
       deactivated_at__isnull=True
-    ).prefetch_related('company_local_relations').order_by('name').all()
+    ).prefetch_related('company_local_relations', 'departments').order_by('name').all()
 
     return [await company.to_dict_related() for company in companies_orm]
 
@@ -105,7 +111,76 @@ async def fetch_companies() -> list[dict]:
       "Ocorreu um erro ao obter as empresas.",
       str(e)
     ) from e
+
+#--- Lookup fields Configuration ---#
+ALLOWED_AND_FILTER_FIELDS: set[str] = {
+  "id",
+  "name",
+  "acronym",
+  "departments__id",
+  "departments__name",
+}
+
+DEFAULT_OR_SEARCH_FIELDS: list[str] = [
+  "id",
+  "name",
+  "acronym",
+  "departments__name"
+]
+
+ALLOWED_ORDER_FIELDS: set[str] = {
+  "id",
+  "name",
+  "acronym"
+}
+
+async def fetch_companies_management(
+    path: str,
+    page_size: int,
+    page: int,
+    original_query_params: dict | None,
+    # O parametro search serve para pesquisa geral (OR)
+    search: str | None,
+    # Dict para pesquisa especifica (AND)
+    and_filters: dict[str, any] | None,
+    # Campos para ordenação, usar o prefixo '-' para descendente
+    order_by: str | None
+  ):
+  start = time.time()
+  
+  queryset = Companies.all()
+  
+  if and_filters:
+    queryset = _apply_and_filters(queryset, None, ALLOWED_AND_FILTER_FIELDS, and_filters)
+  
+  if search:
+    queryset = _apply_or_search(queryset, DEFAULT_OR_SEARCH_FIELDS, search)
+
+  queryset = _apply_ordering(queryset, ALLOWED_ORDER_FIELDS, "-id", order_by)
+  
+  queryset = queryset.prefetch_related(
+    'departments'
+  ).distinct()
+  
+  # Helper de paginação
+  try:
+    paginated_result = await paginate(
+      queryset=queryset,
+      url=path,
+      page=page,
+      page_size=page_size,
+      original_query_params=original_query_params,
+      distinct=True
+    )
     
+  except Exception as e:
+    logger.error(f"Error during companies pagination: {e}", exc_info=True)
+    raise CustomError(500, "Erro ao processar a lista de empresas.", str(e)) from e
+
+  end = time.time()
+  logger.info(f"fetch_tickets execution time: {end-start:.4f}s")
+  return paginated_result
+
 async def fetch_company_by_id(company_id: int) -> Companies:
   """
   Obtém uma empresa específica pelo seu ID, incluindo seus locais e categorias de ticket associadas.
@@ -170,13 +245,14 @@ async def update_company_details(company_id: int, company_data: dict) -> Compani
       update_fields_company = []
       if "name" in company_data_dict:
         if not company_data_dict["name"]:
-          raise CustomError(400, "O nome da empresa não pode ser vazio se fornecido para atualização.")
+          raise CustomError(400, "O nome da empresa não pode ser vazio.")
         company_to_update.name = company_data_dict["name"]
         update_fields_company.append("name")
       if "acronym" in company_data_dict:
         if not company_data_dict["acronym"]:
-          raise CustomError(400, "O acrônimo da empresa não pode ser vazio se fornecido para atualização.")
+          raise CustomError(400, "O acrônimo da empresa não pode ser vazio.")
         company_to_update.acronym = company_data_dict["acronym"]
+        update_fields_company.append("acronym")
       
       if update_fields_company:
         await company_to_update.save(update_fields=update_fields_company)

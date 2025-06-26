@@ -38,7 +38,8 @@ class Tickets(Model):
     "helpdesk_models.TicketStatuses",
     related_name="status_tickets",
     db_column="status_id",
-    default=1
+    default=1,
+    null=True
   )
   type = fields.ForeignKeyField(
     "helpdesk_models.TicketTypes",
@@ -150,15 +151,14 @@ class Tickets(Model):
     requester_obj = await self.requester
     agent_obj = await self.agent if self.agent else None
     
-    # Call .to_dict() on related objects if they exist (assuming these are sync)
     category = category_obj#.to_dict() if category_obj else None
     subcategory = subcategory_obj if subcategory_obj else None
     status = status_obj#.to_dict() if status_obj else None
     priority = priority_obj#.to_dict() if priority_obj else None
     
-    # Await the async to_dict_contacts calls
+    # # Await the async to_dict_contacts calls
     requester = await requester_obj.to_dict_ticket_requester() if requester_obj else None
-    agent = await agent_obj.to_dict_ticket_agent() if agent_obj else None
+    agent = agent_obj.to_dict_ticket_agent() if agent_obj else None
 
     return {
       "id": self.id,
@@ -174,13 +174,47 @@ class Tickets(Model):
       "subcategory": subcategory,
       "requester": requester,
       "agent": agent,
-      # attachments_count comes from the annotation, should be fine
+      "attachments": self.attachments_count
+    }
+  
+  async def to_dict_pagination(self):
+    # Await related fields (even if prefetched)
+    category_obj = await self.category
+    subcategory_obj = await self.subcategory if self.subcategory else None # This might be None, handle below
+    status_obj = await self.status
+    priority_obj = await self.priority
+    requester_obj = await self.requester
+    agent_obj = await self.agent if self.agent else None
+    
+    category = category_obj#.to_dict() if category_obj else None
+    subcategory = subcategory_obj if subcategory_obj else None
+    status = status_obj#.to_dict() if status_obj else None
+    priority = priority_obj#.to_dict() if priority_obj else None
+    
+    # # Await the async to_dict_contacts calls
+    requester = await requester_obj.to_dict_ticket_requester() if requester_obj else None
+    agent = agent_obj.to_dict_ticket_agent() if agent_obj else None
+
+    return {
+      "id": self.id,
+      "uid": self.uid,
+      "subject": self.subject,
+      "request": self.request,
+      "response": self.response,
+      "closed_at": self.closed_at.isoformat() if self.closed_at else None,
+      "created_at": self.created_at.isoformat(),
+      "status": status,
+      "priority": priority,
+      "category": category,
+      "subcategory": subcategory,
+      "requester": requester,
+      "agent": agent,
       "attachments": self.attachments_count
     }
   
   async def to_dict_details(self):
     try:
-      category = await self.category
+      category = await self.category.to_dict()
       subcategory = await self.subcategory if self.subcategory else None
       status = await self.status
       priority = await self.priority
@@ -201,8 +235,10 @@ class Tickets(Model):
       "subject": self.subject,
       "request": self.request,
       "response": self.response,
-      "closed_at": self.closed_at.strftime("%d/%m/%Y - %H:%M") if self.closed_at else None,
-      "created_at": self.created_at.strftime("%d/%m/%Y - %H:%M"),
+      "internal_comment": self.internal_comment,
+      "spent_time": self.spent_time,
+      "closed_at": self.closed_at.isoformat() if self.closed_at else None,
+      "created_at": self.created_at.isoformat(),
       "prevention_date": self.prevention_date.isoformat() if self.prevention_date else None,
       "status": status,
       "priority": priority,

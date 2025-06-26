@@ -1,8 +1,9 @@
-fastapi[all] 
+fastapi[all]
 fastapi-mail
-tortoise-orm 
+tortoise-orm
 mysql-connector-python
 aiomysql
 python-dotenv
 python-jose[cryptography]
 aiofiles
+requests

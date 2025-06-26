@@ -1,5 +1,6 @@
 from tortoise.models import Model
 from tortoise import fields
+from tortoise.queryset import QuerySet
 from tortoise.exceptions import DoesNotExist
 from datetime import datetime
 import hashlib
@@ -66,7 +67,15 @@ class Employees(Model):
       "email": email,
     }
   
-  async def to_dict_ticket_agent(self) -> dict:
+  def to_dict_ticket_agent(self) -> dict:
+    return {
+      "id": self.id,
+      "first_name": self.first_name,
+      "last_name": self.last_name,
+      "full_name": self.full_name
+    }
+
+  async def to_dict_equipments(self) -> dict:
     department = await self.department
     company = await self.company
     local = await self.local
@@ -80,9 +89,9 @@ class Employees(Model):
       "full_name": self.full_name,
       "department": department_dict,
       "company": company_dict,
-      "local": local_dict
+      "local": local_dict,
     }
-
+      
   async def to_dict_ticket_requester(self) -> dict:
     department = await self.department
     company = await self.company
@@ -123,6 +132,30 @@ class Employees(Model):
       "contacts": public_contacts
     }
     
+  async def to_dict_pagination(self) -> dict:
+    department = await self.department
+    company = await self.company
+    local = await self.local
+    public_contacts = [
+      await contact.to_dict()
+      for contact in await self.employee_relation.filter(main_contact=True)
+    ]
+    permissions = [permission.to_dict() for permission in await self.permissions.all()]
+    return {
+      "id": self.id,
+      "first_name": self.first_name,
+      "last_name": self.last_name,
+      "full_name": self.full_name,
+      "employee_num": self.employee_num,
+      "deactivated_at": self.deactivated_at,
+      "last_time_seen": self.last_time_seen,
+      "department": department.to_dict(),
+      "company": company.to_dict(),
+      "local": local.to_dict(),
+      "contacts": public_contacts,
+      "permissions": permissions
+    }
+    
   async def to_dict(self) -> dict:
     department = await self.department
     company = await self.company
@@ -138,12 +171,25 @@ class Employees(Model):
       "last_name": self.last_name,
       "full_name": self.full_name,
       "employee_num": self.employee_num,
-      "deactivated_at": self.deactivated_at.strftime("%d/%m/%Y - %H:%M") if self.deactivated_at else None,
-      "last_time_seen": self.last_time_seen.strftime("%d/%m/%Y - %H:%M") if self.last_time_seen else None,
+      "deactivated_at": self.deactivated_at,
+      "last_time_seen": self.last_time_seen,
       "department": department.to_dict(),
       "company": company.to_dict(),
       "local": local.to_dict(),
       "contacts": public_contacts,
+      "permissions": permissions
+    }
+
+  async def to_dict_gateway(self) -> dict:
+    permissions = [permission.to_dict() for permission in await self.permissions.all()]
+    return {
+      "id": self.id,
+      "first_name": self.first_name,
+      "last_name": self.last_name,
+      "full_name": self.full_name,
+      "employee_num": self.employee_num,
+      "deactivated_at": self.deactivated_at,
+      "last_time_seen": self.last_time_seen,
       "permissions": permissions
     }
   
@@ -193,6 +239,21 @@ class Employees(Model):
       "local": local.to_dict(),
       "companies": companies,
       "permissions": permissions,
+      "contacts": contacts
+    }
+  
+  async def to_dict_basic_info(self) -> dict:
+    department = await self.department
+    local = await self.local
+    contacts = [await contact.to_dict() for contact in await self.employee_relation.filter(main_contact=True, public=True)]
+    return {
+      "id": self.id,
+      "first_name": self.first_name,
+      "last_name": self.last_name,
+      "full_name": self.full_name,
+      "employee_num": self.employee_num,
+      "department": department.to_dict(),
+      "local": local.to_dict(),
       "contacts": contacts
     }
   

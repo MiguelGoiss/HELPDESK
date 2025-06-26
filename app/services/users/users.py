@@ -10,8 +10,10 @@ from tortoise.exceptions import DoesNotExist
 import time
 from functools import reduce
 from operator import or_
-from app.utils.helpers.employees.employee_helpers import _apply_filters
+from app.utils.helpers.employees.employee_helpers import _apply_filters, _confirm_employee_exists
+import logging
 
+logger = logging.getLogger(__name__)
 
 async def validate_unique_fields(model_class, fields_to_check: dict, exclude_id: int | None = None):
   query_filters = []
@@ -114,7 +116,7 @@ async def create_user(user: dict, current_user: dict):
     log_user_info = await new_user.to_dict_log()
     await LogService.log_action(
       action_type="user_created",
-      employee_id=current_user['id'],
+      agent_id=current_user['id'],
       model=EmployeeLogs,
       target_id=new_user.id,
       new_values=log_user_info,
@@ -180,7 +182,7 @@ async def get_users(
     'employee_relation',
     'permissions',
     'employee_relation__contact_type'
-  )
+  ).distinct()
 
   # Chamar a função de paginação
   res = await paginate(
@@ -276,30 +278,30 @@ async def update_or_create_employee_contacts(contacts_data: list[dict], user_id:
       existing_contact = existing_contacts_map.get(lookup_key)
 
       if existing_contact:
-          # Contacto já existe - confirma se é necessário fazer update
-          processed_contact_ids.add(existing_contact.id)
-          needs_update = False
-          update_payload = {}
-          # Compara os campos relevantes (name, main_contact e public)
-          # Add other fields you might want to update
-          if contact_input.get('name') != existing_contact.name:
-            needs_update = True
-            update_payload['name'] = contact_input.get('name')
-            
-          if contact_input.get('main_contact') != existing_contact.main_contact:
-            needs_update = True
-            update_payload['main_contact'] = contact_input.get('main_contact')
-            
-          if contact_input.get('public') != existing_contact.public:
-            needs_update = True
-            update_payload['public'] = contact_input.get('public')
+        # Contacto já existe - confirma se é necessário fazer update
+        processed_contact_ids.add(existing_contact.id)
+        needs_update = False
+        update_payload = {}
+        # Compara os campos relevantes (name, main_contact e public)
+        # Add other fields you might want to update
+        if contact_input.get('name') != existing_contact.name:
+          needs_update = True
+          update_payload['name'] = contact_input.get('name')
+          
+        if contact_input.get('main_contact') != existing_contact.main_contact:
+          needs_update = True
+          update_payload['main_contact'] = contact_input.get('main_contact')
+          
+        if contact_input.get('public') != existing_contact.public:
+          needs_update = True
+          update_payload['public'] = contact_input.get('public')
 
-          if needs_update:
-            # O Tortoise, precisa de instancias da base de dados
-            # adiciona as instancias a uma lista
-            for key, value in update_payload.items():
-              setattr(existing_contact, key, value)
-            contacts_to_update.append(existing_contact) # Adiciona as instancias ao update
+        if needs_update:
+          # O Tortoise, precisa de instancias da base de dados
+          # adiciona as instancias a uma lista
+          for key, value in update_payload.items():
+            setattr(existing_contact, key, value)
+          contacts_to_update.append(existing_contact) # Adiciona as instancias ao update
 
       else:
         # Contacto não existe - prepara para criação
@@ -389,7 +391,7 @@ async def update_user_details(id: int, user_data: dict, current_user: dict):
     db_user = await fetch_user_for_changes(id)
 
     await validate_unique_fields(Employees, { 'username': user_data.username }, db_user.id)
-
+    print(user_data)
     # Remove as chaves com valor None
     update_data = user_data.dict(exclude_unset=True)
     
@@ -435,7 +437,7 @@ async def update_user_details(id: int, user_data: dict, current_user: dict):
     # Adiciona um log com as alterações gerais do utilizador, antes e depois da edição
     await LogService.log_action(
       action_type="user_updated",
-      employee_id=current_user['id'],
+      agent_id=current_user['id'],
       model=EmployeeLogs,
       target_id=db_user.id,
       new_values=before_changes,
@@ -470,6 +472,46 @@ async def delete_user_details(id: int):
     raise CustomError(
       500,
       "An error occurred while deleting the user",
+      str(e)
+    )
+
+async def authentication_test(authentication_form: dict):
+  try:
+    # Valida o username inserido se existe em algum colaborador que não esteja desativado nem apagado
+    db_user = Employees.filter(employee_relation__contact=authentication_form['email'], deactivated_at=None, deleted_at=None).first()
+    db_user = await db_user.prefetch_related(
+      'permissions',
+      'employee_relation',
+      'employee_relation__contact_type'
+    )
+    # Verifica a password se corresponde com a recebida pelo cliente
+    if not db_user or not db_user.verify_password(authentication_form['password'], db_user.password):
+      raise CustomError(
+        401,
+        "Incorrect username or password",
+      )
+      
+    # Formata os dados do utilizador para dict
+    user_info = await db_user.to_dict()
+    # Cria o access token com exp de 30 mins
+    access_token = await create_token(user_info, 'access')
+    # Cria o refresh token com exp de 5 dias
+    refresh_token = await create_token(user_info, 'refresh')
+
+    # Devolve os tokens
+    return {
+      "access_token": access_token,
+      "refresh_token": refresh_token
+    }
+
+  except CustomError as e:
+    raise e
+
+  except Exception as e:
+    print(str(e))
+    raise CustomError(
+      500,
+      "An error occurred while authenticating the user",
       str(e)
     )
 
@@ -728,4 +770,221 @@ async def get_employee_basic_info(id: int) -> dict:
       "Ocorreu um erro ao obter as informações do colaborador",
       str(e)
     )
+
+async def fetch_all_user_permissions() -> dict:
+  try:
+    # Obtem todas as permissões da base de dados
+    all_permissions = await EmployeePermissions.all()
     
+    # Converte cada permissão para um dicionário usando o método to_dict do modelo
+    permissions_list = [permission.to_dict() for permission in all_permissions]
+    
+    return {
+      "count": len(permissions_list),
+      "permissions": permissions_list
+    }
+
+  except Exception as e:
+    # Log the error for debugging purposes
+    logger.error(f"Error fetching all user permissions: {e}", exc_info=True) # Assuming you have a logger configured
+    raise CustomError(
+      500,
+      "Ocorreu um erro ao obter todas as permissões de utilizador.",
+      str(e)
+    )
+
+async def fetch_requester_employees(company_id: int | None) -> dict:
+  """
+  Obtém todos os colaboradores ativos adequados para serem requerentes.
+  Opcionalmente, filtra por um company_id, verificando tanto o campo direto
+  employee.company_id como a relação many-to-many employee.companies.
+
+  Args:
+    company_id: ID opcional da empresa pela qual filtrar.
+
+  Returns:
+    Um dicionário contendo a contagem de requerentes e uma lista de
+    requerentes.
+
+  Raises:
+    CustomError: Se ocorrer um erro durante a interação com a base de dados.
+  """
+  try:
+    # Base query for active employees
+    queryset = Employees.filter(
+      deactivated_at__isnull=True,
+      deleted_at__isnull=True
+    )
+
+    # Apply company filter if company_id is provided
+    if company_id is not None:
+      queryset = queryset.filter(
+        Q(company_id=company_id) | Q(companies__id=company_id)
+      ).distinct()
+
+    prefetch_fields = ['department', 'local']
+    if company_id is not None:
+      prefetch_fields.append('companies')
+    active_employees = await queryset.prefetch_related(*prefetch_fields).all()
+
+    requesters_list = [
+      await employee.to_dict_basic_info() for employee in active_employees
+    ]
+
+    return {
+      "count": len(requesters_list),
+      "requesters": requesters_list
+    }
+
+  except Exception as e:
+    logger.error(f"Error fetching requester employees: {e}", exc_info=True)
+    raise CustomError(
+      500,
+      "Ocorreu um erro ao obter a lista de colaboradores requerentes.",
+      str(e)
+    )
+
+async def validate_employee_existance(employee_id: int):
+  try:
+    queryset = Employees.all()
+    employee_exists = await _confirm_employee_exists(queryset, employee_id)
+    return employee_exists
+  
+  except CustomError as e:
+    raise
+  
+  except Exception as e:
+    raise CustomError(
+      500,
+      "Ocorreu um erro a validar o colaborador",
+      str(e)
+    ) from e
+  
+async def fetch_current_user(employee_id: int | None = None):
+  try:
+    if not employee_id:
+      raise CustomError(
+        404,
+        "Colaborador não encontrado",
+        "Não foi passado o id do colaborador"
+      )
+      
+    db_employee = await Employees.get_or_none(
+      id=employee_id,
+      deactivated_at__isnull=True,
+      deleted_at__isnull=True
+    ).prefetch_related(
+      'department',
+      'company',
+      'local',
+      'employee_relation',
+      'permissions',
+      'employee_relation__contact_type'
+    )
+    if not db_employee:
+      raise CustomError(
+        404,
+        "Colaborador não encontrado",
+        "Não foi possível encontrar um utilizador com o id: {employee_id}"
+      )
+    employee_dict = await db_employee.to_dict()
+    return employee_dict
+  
+  except CustomError as e:
+    raise e
+  
+  except Exception as e:
+    raise CustomError(
+      500,
+      "Ocorreu um erro a obter o utilizador atual",
+      str(e)
+    )
+
+async def fetch_gateway_user(employee_id: int | None = None):
+  try:
+    if not employee_id:
+      raise CustomError(
+        404,
+        "Colaborador não encontrado",
+        "Não foi passado o id do colaborador"
+      )
+      
+    db_employee = await Employees.get_or_none(
+      id=employee_id,
+      deactivated_at__isnull=True,
+      deleted_at__isnull=True
+    ).prefetch_related(
+      'permissions',
+    )
+    if not db_employee:
+      raise CustomError(
+        404,
+        "Colaborador não encontrado",
+        "Não foi possível encontrar um utilizador com o id: {employee_id}"
+      )
+    employee_dict = await db_employee.to_dict_gateway()
+    return employee_dict
+  
+  except CustomError as e:
+    raise e
+  
+  except Exception as e:
+    raise CustomError(
+      500,
+      "Ocorreu um erro a obter o utilizador atual",
+      str(e)
+    )
+  
+async def fetch_agents():
+  try:
+    db_agents = await Employees.filter(
+      permissions__id=4,
+      deactivated_at__isnull=True,
+      deleted_at__isnull=True
+    ).all()
+    
+    return [agent.to_dict_ticket_agent() for agent in db_agents]
+
+  except Exception as e:
+    raise CustomError(
+      500,
+      "Ocorreu um erro a obter os agentes",
+      str(e)
+    )
+
+async def filtered_user_ids_by_and_search(
+    and_filters: dict[str, any] | None,
+    order_by: str | None 
+  ):
+  queryset = Employees.filter(deleted_at__isnull=True)
+
+  # Aplica os filtros recebidos (apenas os AND)
+  queryset = _apply_filters(queryset, and_filters, None, order_by)
+  
+  dbData = await queryset
+  data_list = [employee.id for employee in dbData]
+  return data_list
+  
+async def fetch_equipment_users(
+    and_filters: dict[str, any] | None,
+    order_by: str | None
+  ):
+  start = time.time()
+  queryset = Employees.filter(deleted_at__isnull=True)
+
+  queryset = _apply_filters(queryset, and_filters, None, order_by)
+
+  # Fazer os dados relacionados (Prefetch) para maior eficiencia (IMPORTANTE! reduziu o tempo para metade!)
+  # Garantir que todos os campos necessários no .to_dict() estão prefetched
+  queryset = queryset.prefetch_related(
+    'department',
+    'company',
+    'local'
+  )
+  dbData = await queryset
+  data_list = [await data.to_dict_equipments() for data in dbData]
+
+  # Chamar a função de paginação
+  end = time.time()
+  print(f"get_equipment_users execution time: {end-start:.4f}s")
+  return data_list

@@ -14,6 +14,10 @@ from app.utils.helpers.tickets import (
   _handle_update_logging,
   _handle_update_notifications,
   _apply_filters,
+  _fetch_attachment,
+  _construct_file_path,
+  _check_file_existance,
+  _determine_media_type,
 )
 from app.utils.errors.exceptions import CustomError
 from app.utils.helpers.paginate import paginate
@@ -22,6 +26,7 @@ from app.services.logs import LogService
 from tortoise.functions import Count
 from tortoise.transactions import in_transaction
 from fastapi import UploadFile
+from fastapi.responses import FileResponse
 import json
 import time
 import logging
@@ -50,6 +55,12 @@ async def create_ticket(
         ticket_dict['created_by_id'] = current_user['id']
 
       ticket_dict['created_at'] = datetime.now(timezone.utc)
+      
+      if not ticket_dict.get('status_id', None):
+        if ticket_dict['agent_id'] != None:
+          ticket_dict['status_id'] = 2
+      elif ticket_dict['status_id'] == 7:
+        ticket_dict['closed_at'] = datetime.now(timezone.utc).isoformat()
 
       # Criar o ticket
       new_ticket_orm = await Tickets()._create_ticket(**ticket_dict)
@@ -75,6 +86,7 @@ async def create_ticket(
 
       # Lida com os uploads de ficheiros, guarda e adiciona à DB
       if files:
+        print("\n\n\nTICKET",current_user)
         # Qualquer exceção que ocorre dentro de handle_file_uploads vai abortar a transação
         await _handle_file_uploads(new_ticket_orm, files, current_user)
 
@@ -122,19 +134,11 @@ async def fetch_tickets(
   ) -> dict:
   start = time.time()
   queryset = Tickets.all()
+  if own:
+    queryset = queryset.filter(Q(agent_id=current_user['id']))
 
   # Aplica os filtros
   queryset = _apply_filters(queryset, and_filters, search, order_by)
-  # Filtros para o search (AND)
-  # if and_filters:
-  #   queryset = await _apply_and_filters(queryset, and_filters)
-
-  # # Aplica search geral (OR)
-  # queryset = _apply_or_search(queryset, search)
-
-  # # Aplica o order
-  # queryset = _apply_ordering(queryset, order_by)
-
   # Annotate com count para obter a contagem dos attachments em vez dos attachments
   queryset = queryset.annotate(attachments_count=Count("attachments"))
   
@@ -143,16 +147,12 @@ async def fetch_tickets(
     'priority',
     'category',
     'subcategory',
-    'requester', 
+    'requester',
     'requester__department',
     'requester__company',
     'requester__local',
     'requester__employee_relation',
-    'agent',
-    'agent__department',
-    'agent__company',
-    'agent__local',
-    'agent__employee_relation',
+    'agent'
   )
 
   # Helper de paginação
@@ -223,11 +223,11 @@ async def update_ticket_details(
   # _authorize_ticket_update(ticket, current_user)
   # Guarda o estado do ticket antes de qualquer alteração para logs e comparações
   old_ticket_details = await ticket.to_dict_log()
-  original_agent_id_value = ticket.agent_id # Capture the actual ID from the modeloriginal_status_id_value
+  original_agent_id_value = ticket.agent_id # Capture the actual ID from the model original_status_id_value
 
   # Prepara os dados para o update
   update_data, ccs_ids_to_update = _prepare_update_data(ticket_data)
-
+  
   assigned = False
   async with in_transaction('helpdesk') as conn:
     try:
@@ -236,7 +236,8 @@ async def update_ticket_details(
       _apply_direct_updates(ticket, update_data)
       
       # Lida com as alterações automáticas de estado
-      assigned = _handle_automatic_status_update(ticket, update_data, original_agent_id_value)
+      if original_agent_id_value:
+        assigned = _handle_automatic_status_update(ticket, update_data, original_agent_id_value)
       
       # Lida com o estado "fechado"
       _handle_closed_at_update(ticket, old_ticket_details)
@@ -315,7 +316,7 @@ async def fetch_preset_counts(search: str | None , and_filters: dict[str, any] |
   base_queryset = Tickets.all()
   
   if own:
-    base_queryset = base_queryset.filter(Q(requester_id=current_user['id']) | Q(agent_id=current_user['id']))
+    base_queryset = base_queryset.filter(Q(agent_id=current_user['id']))
 
   for preset in presets:
     preset_queryset = base_queryset # Começa com o queryset base (já filtrado se and_filters foi passado)
@@ -325,7 +326,7 @@ async def fetch_preset_counts(search: str | None , and_filters: dict[str, any] |
           
         if isinstance(preset_filter_dict, dict):
           # Aplica os filtros específicos do preset sobre o queryset base
-          preset_queryset = _apply_filters(preset_queryset, preset_filter_dict)
+          preset_queryset = _apply_filters(preset_queryset, preset_filter_dict, search)
         else:
           logger.warning(f"Preset '{preset.name}' (ID: {preset.id}) filter is not a valid JSON object. Skipping preset filters.")
       except json.JSONDecodeError:
@@ -404,4 +405,37 @@ async def fetch_ticket_logs(
   except Exception as e:
     logger.error(f"Erro ao obter logs para o ticket UID {ticket_uid}: {e}", exc_info=True)
     raise CustomError(500, "Erro ao obter os logs do ticket", str(e)) from e
-  
+
+async def fetch_ticket_file(uid: str, filename: str):
+  """
+  Fetches a specific file attached to a ticket.
+
+  The file path is constructed based on the attachment's creation date (year/month/day).
+
+  Args:
+    uid: The UID of the ticket.
+    filename: The name of the file as stored on the server (TicketAttachments.filename).
+
+  Returns:
+    A FileResponse object to stream the file.
+
+  Raises:
+    CustomError: If the attachment or file is not found, or if an error occurs.
+  """
+  try:
+    attachment = await _fetch_attachment(uid, filename)
+
+    full_file_path = _construct_file_path(attachment)
+
+    _check_file_existance(full_file_path, attachment)
+
+    media_type = _determine_media_type(full_file_path)
+      
+    return FileResponse(path=full_file_path, media_type=media_type, filename=attachment.original_name)
+
+  except CustomError:
+    raise
+
+  except Exception as e:
+    logger.error(f"Error fetching file '{filename}' for ticket UID '{uid}': {e}", exc_info=True)
+    raise CustomError(500, "Ocorreu um erro ao aceder ao ficheiro.") from e

@@ -21,7 +21,7 @@ def _validate_company_creation_data(company_data: dict):
   for i, local_data in enumerate(locals_to_create_data):
     if not isinstance(local_data, dict):
       raise CustomError(400, f"Cada item em 'locals' deve ser um dicionário. Item {i} inválido.")
-    required_local_fields = ["name", "short", "background", "text"]
+    required_local_fields = ["name", "short"]
     for f in required_local_fields:
       if f not in local_data or not local_data[f]:
         raise CustomError(400, f"Campo obrigatório '{f}' ausente ou vazio para o local {i+1}.")
@@ -67,7 +67,7 @@ async def _manage_locals_for_update(company: Companies, locals_update_data: list
         continue
       
       update_fields = []
-      for field_key in ["name", "short", "background", "text"]:
+      for field_key in ["name", "short"]:
         if field_key in local_data:
           field_value = local_data[field_key]
           if not field_value: # Garantir que campos não sejam vazios se fornecidos
@@ -78,7 +78,7 @@ async def _manage_locals_for_update(company: Companies, locals_update_data: list
         await local_to_update.save(update_fields=update_fields)
     
     else:  # Novo local: criar
-      required_new_local_fields = ["name", "short", "background", "text"]
+      required_new_local_fields = ["name", "short"]
       for f_new in required_new_local_fields:
         if f_new not in local_data or not local_data[f_new]:
           raise CustomError(400, f"Campo obrigatório '{f_new}' ausente ou vazio para um novo local.")

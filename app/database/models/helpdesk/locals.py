@@ -5,8 +5,8 @@ class Locals(Model):
   id = fields.IntField(pk=True)
   name = fields.CharField(max_length=50)
   short = fields.CharField(max_length=10)
-  background = fields.CharField(max_length=10)
-  text = fields.CharField(max_length=10)
+  background = fields.CharField(max_length=10, null=True)
+  text = fields.CharField(max_length=10, null=True)
   
   company = fields.ForeignKeyField(
     "helpdesk_models.Companies",

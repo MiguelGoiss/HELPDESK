@@ -7,6 +7,7 @@ from app.services.tickets import (
   update_ticket_details,
   fetch_preset_counts,
   fetch_ticket_logs,
+  fetch_ticket_file,
 )
 from app.utils.errors.exceptions import CustomError
 from app.schemas.tickets import BaseCreateTicket
@@ -139,4 +140,16 @@ async def handle_fetch_ticket_logs(
     logger.error(f"Unexpected error during fetching tickets: {e}", exc_info=True)
     raise e
 
+async def handle_fetch_ticket_file(
+  uid: str,
+  filename: str,
+):
+  try:
+    return await fetch_ticket_file(uid, filename)
+    
+  except CustomError as e:
+    raise e
+  
+  except Exception as e:
+    raise e
 

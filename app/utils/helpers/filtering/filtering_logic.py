@@ -73,26 +73,83 @@ def _build_q_objects_from_filter_dict(
         raise CustomError(400, "Filtro inválido", f"Não é possível filtrar por data no campo '{base_field}'. Campo não permitido para filtro de data.")
     # --- Filtro de campos que não são datas ---
     elif field in allowed_fields_config:
-      if isinstance(value, str) and not field.endswith('_id'):
+      print(field)
+      if isinstance(value, str) and not field.endswith('_id') and field != "id" and not field.endswith('_isnull'):
         if ',' in value:
           parts = [part.strip() for part in value.split(',') if part.strip()]
           if parts:
             # Cria um objeto Q para cada parte e combina-os com AND para este campo específico.
             # Cada parte deve estar contida no campo.
+            print(f"{field}__icontains")
             field_specific_q_objects = [Q(**{f"{field}__icontains": part}) for part in parts]
-            q_objects.append(reduce(and_, field_specific_q_objects))
+            q_objects.append(reduce(or_, field_specific_q_objects))
           # Se 'parts' estiver vazio (ex: valor era apenas ","), nenhum filtro é adicionado para este campo.
         else:
           # Sem vírgula, comportamento original de __icontains para o valor completo.
+          
+          print(f"{field}_icontains: {value}")
           q_objects.append(Q(**{f"{field}__icontains": value}))
       elif isinstance(value, list):
         # Filtro para correspondência em lista de valores.
-        q_objects.append(Q(**{f"{field}__in": value}))
+        # Confirma se existe algum valor dentro do value que seja lista.
+        _type = None
+        if ':' in str(value[-1]):
+          _type = value[-1].split(':').pop()
+          value[-1] = value[-1][:-2]
+
+        
+        if any(isinstance(item, list) for item in value):
+          # Se pelo menos 1 dos elementos do value for uma lista
+          # Trata como: (cond1 OR cond2) AND (cond3 OR cond4) ...
+          # Onde cada elemento de 'value' pode ser uma lista de condições OR-ed, ou uma string única.
+          for element_in_value in value: # element_in_value can be a list or a string
+            current_or_group_qs = []
+            if isinstance(element_in_value, list): # This is a sub-list for OR conditions
+              for part in element_in_value:
+                part_str = str(part).strip() # Ensure part is a string and stripped
+                if part_str: # Only add if part is non-empty
+                  current_or_group_qs.append(Q(**{f"{field}__icontains": part_str}))
+            elif isinstance(element_in_value, str): # This is a single string condition
+              part_str = element_in_value.strip()
+              if part_str:
+                current_or_group_qs.append(Q(**{f"{field}__icontains": part_str}))
+            
+            if current_or_group_qs: # Garante que current_or_group_qs não está vazia antes de reduce
+              q_objects.append(reduce(or_, current_or_group_qs))
+          
+        # ELIF: If not a list containing sub-lists, check if it's a flat list of strings.
+        # Example: value = ["tagA", "tagB"] -> field__icontains="tagA" OR field__icontains="tagB"
+        elif all(isinstance(item, str) for item in value): # `all` ensures it's purely a list of strings
+          current_or_group_qs = []
+          for item_str in value:
+            part_str = item_str.strip() # item_str is already a string
+            if part_str:
+              current_or_group_qs.append(Q(**{f"{field}__icontains": part_str}))
+          if current_or_group_qs: # Only add if there are actual conditions
+            q_objects.append(reduce(or_, current_or_group_qs))
+
+        else:
+          # Fallback for other list types, e.g., list of IDs for an __in query
+          q_objects.append(Q(**{f"{field}__in": value}))
       else:
-        # Correspondência exata para outros tipos ou campos _id.
-        q_objects.append(Q(**{field: value}))
+        value = str(value)
+        print("\n\nVALUE:",str(value))
+        if ',' in value:
+          values = [part_val.strip() for part_val in value.split(',') if part_val.strip()]
+        
+          # Cria um objeto Q para cada parte e combina-os com AND para este campo específico.
+          # Cada parte deve estar contida no campo.
+          q_objects.append(Q(**{f"{field}__in": values}))
+        elif field.endswith('_isnull'):
+          # Se a pesquisa for feita com __isnull, deve ser feita com o valor 0/1 para conseguir 
+          # transformar em boolean, para a query
+          q_objects.append(Q(**{field: bool(int(value))}))
+        else:
+          # Correspondência exata para outros tipos ou campos _id.
+          q_objects.append(Q(**{field: value}))
     else:
       raise CustomError(400, "Filtro inválido", f"Não é possível filtrar pelo campo '{field}'. Campo não permitido para filtro.")
+  print(str(q_objects))
   
   return q_objects
 
@@ -101,7 +158,7 @@ def _apply_and_filters(
     DATE_FIELDS: set[str] | None,
     ALLOWED_AND_FILTER_FIELDS: set[str],
     filters_dict: dict[str, any] | str | None,
-) -> QuerySet:
+  ) -> QuerySet:
   """
   Aplica filtros AND a um queryset do Tortoise.
   Valida campos e trata tipos de dados.
@@ -136,10 +193,11 @@ def _apply_and_filters(
       DATE_FIELDS if DATE_FIELDS is not None else set(),
       ALLOWED_AND_FILTER_FIELDS
     )
+    
     if q_conditions:
       # Aplica todos os objetos Q; o Tortoise irá combiná-los com AND.
-      queryset = queryset.filter(*q_conditions)
-            
+      for q_condition_group in q_conditions:
+        queryset = queryset.filter(q_condition_group)
   return queryset
 
 def _apply_or_search(queryset: QuerySet, DEFAULT_OR_SEARCH_FIELDS: list[str], search: str | None) -> QuerySet:
